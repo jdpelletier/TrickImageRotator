@@ -2,8 +2,9 @@ import argparse
 from astropy.io import fits
 import math
 import numpy as np
-from astropy.wcs import WCS
-
+from astropy import wcs
+import PIL.Image as PILimage
+import matplotlib.pyplot as plt
 parser = argparse.ArgumentParser(description="Rotates image",
                          usage="imageRotator.py file")
 
@@ -12,7 +13,56 @@ parser.add_argument("file", help="file to load")
 
 args = parser.parse_args()
 
-def wcsradectopix(ra_deg, dec_deg, coords='data', naxispath=None):
+
+def _array_converter(func, sky, *args, ra_dec_order=False):
+    """
+    A helper function to support reading either a pair of arrays
+    or a single Nx2 array.
+    """
+
+    def _return_list_of_arrays(axes, origin):
+        if any([x.size == 0 for x in axes]):
+            return axes
+
+        try:
+            axes = np.broadcast_arrays(*axes)
+        except ValueError:
+            raise ValueError(
+                "Coordinate arrays are not broadcastable to each other")
+
+        xy = np.hstack([x.reshape((x.size, 1)) for x in axes])
+
+        if ra_dec_order and sky == 'input':
+            xy = wcs.WCS._denormalize_sky(xy)
+        output = func(xy, origin)
+        if ra_dec_order and sky == 'output':
+            output = wcs.WCS._normalize_sky(output)
+            return (output[:, 0].reshape(axes[0].shape),
+                    output[:, 1].reshape(axes[0].shape))
+        return [output[:, i].reshape(axes[0].shape)
+                for i in range(output.shape[1])]
+
+    def _return_single_array(xy, origin):
+        if 0 in xy.shape:
+            return xy
+        if ra_dec_order and sky == 'input':
+            xy = wcs.WCS._denormalize_sky(xy)
+        result = func(xy, origin)
+        if ra_dec_order and sky == 'output':
+            result = wcs.WCS._normalize_sky(result)
+        return result
+
+    xy, origin = args
+    xy = np.asarray(xy)
+    origin = int(origin)
+
+    if xy.shape == () or len(xy.shape) == 1:
+        return _return_list_of_arrays([xy], origin)
+    return _return_single_array(xy, origin)
+
+
+
+def wcsradectopix(ra_deg, dec_deg, w, coords='data', naxispath=None):
 
         if coords == 'data':
             origin = 0
@@ -24,13 +74,13 @@ def wcsradectopix(ra_deg, dec_deg, coords='data', naxispath=None):
             args += [0] * len(naxispath)
         skycrd = np.array([args], np.float_)
 
-        pix = WCS.wcs_world2pix(skycrd, origin)
+        pix = w.wcs_world2pix(skycrd, origin)
 
         x = float(pix[0, 0])
         y = float(pix[0, 1])
         return (x, y)
 
-def wcspixtoradec(idxs, coords='data'):
+def wcspixtoradec(w, idxs, coords='data'):
 
         if coords == 'data':
             origin = 0
@@ -40,8 +90,9 @@ def wcspixtoradec(idxs, coords='data'):
         # sky = wcs.wcs_pix2sky(pixcrd, origin)
         # sky = wcs.all_pix2sky(pixcrd, origin)
         # astropy only?
-        sky = WCS.all_pix2world(pixcrd, origin)
+        #sky = wcs.WCS.all_pix2world(pixcrd, origin)
 
+        sky = _array_converter(w._all_pix2world, 'output', pixcrd, origin)
         ra_deg = float(sky[0, 0])
         dec_deg = float(sky[0, 1])
 
@@ -103,12 +154,12 @@ def lat_to_deg(lat):
     return lat_deg
 
 
-def radectopix(ra_deg, dec_deg, format='deg', coords='data'):
+def radectopix(ra_deg, dec_deg, w, format='deg', coords='data'):
     if format != 'deg':
         # convert coordinates to degrees
-        ra_deg = WCS.lon_to_deg(ra_deg)
-        dec_deg = WCS.lat_to_deg(dec_deg)
-    return wcsradectopix(ra_deg, dec_deg, coords=coords,
+        ra_deg = wcs.WCS.lon_to_deg(ra_deg)
+        dec_deg = wcs.WCS.lat_to_deg(dec_deg)
+    return wcsradectopix(ra_deg, dec_deg, w, coords=coords,
                                naxispath=None)
 
 
@@ -169,13 +220,13 @@ def deg2fmt(ra_deg, dec_deg, format):
         return ra_txt, dec_txt
 
 
-def pixtoradec(x, y, format='deg', coords='data'):
+def pixtoradec(x, y, w, format='deg', coords='data'):
     args = [x, y]
-    ra_deg, dec_deg = wcspixtoradec(idxs = args, coords=coords)
+    ra_deg, dec_deg = wcspixtoradec(w=w, idxs = args, coords=coords)
 
     if format == 'deg':
         return ra_deg, dec_deg
-    return WCS.deg2fmt(ra_deg, dec_deg, format)
+    return wcs.WCS.deg2fmt(ra_deg, dec_deg, format)
 
 def add_offset_radec(ra_deg, dec_deg, delta_deg_ra, delta_deg_dec):
     """
@@ -207,32 +258,32 @@ def add_offset_radec(ra_deg, dec_deg, delta_deg_ra, delta_deg_dec):
 
     return (ra2_deg, dec2_deg)
 
-def add_offset_xy(image, x, y, delta_deg_x, delta_deg_y):
+def add_offset_xy(image, x, y, delta_deg_x, delta_deg_y, w):
     # calculate ra/dec of x,y pixel
-    ra_deg, dec_deg = pixtoradec(x, y)
+    ra_deg, dec_deg = pixtoradec(x, y, w)
 
     # add offsets
     ra2_deg, dec2_deg = add_offset_radec(ra_deg, dec_deg,
                                          delta_deg_x, delta_deg_y)
 
     # then back to new pixel coords
-    x2, y2 = radectopix(ra2_deg, dec2_deg)
+    x2, y2 = radectopix(ra2_deg, dec2_deg, w)
 
     return (x2, y2)
 
 
-def calc_compass(image, x, y, len_deg_e, len_deg_n):
+def calc_compass(image, x, y, len_deg_e, len_deg_n, w):
 
     # Get east and north coordinates
-    xe, ye = add_offset_xy(image, x, y, len_deg_e, 0.0)
-    xn, yn = add_offset_xy(image, x, y, 0.0, len_deg_n)
+    xe, ye = add_offset_xy(image, x, y, len_deg_e, 0.0, w)
+    xn, yn = add_offset_xy(image, x, y, 0.0, len_deg_n, w)
 
     return (x, y, xn, yn, xe, ye)
 
 
-def calc_compass_radius(image, x, y, radius_px):
-    xe, ye = add_offset_xy(image, x, y, 1.0, 0.0)
-    xn, yn = add_offset_xy(image, x, y, 0.0, 1.0)
+def calc_compass_radius(image, x, y, radius_px, w):
+    xe, ye = add_offset_xy(image, x, y, 1.0, 0.0, w)
+    xn, yn = add_offset_xy(image, x, y, 0.0, 1.0, w)
 
     # now calculate the length in pixels of those arcs
     # (planar geometry is good enough here)
@@ -244,18 +295,21 @@ def calc_compass_radius(image, x, y, radius_px):
     len_deg_e = radius_px / px_per_deg_e
     len_deg_n = radius_px / px_per_deg_n
 
-    return calc_compass(image, x, y, len_deg_e, len_deg_n)
+    return calc_compass(image, x, y, len_deg_e, len_deg_n, w)
 
 
-def calc_compass_center(image):
+def calc_compass_center(image, w):
     # calculate center of data
-    x = float(image.shape[1]) / 2.0
-    y = float(image.shape[0]) / 2.0
+    #x = float(image.shape[1]) / 2.0
+    #y = float(image.shape[0]) / 2.0
+    #hardcoded values from Jim for trick
+    x = 942
+    y = 747
 
     # radius we want the arms to be (approx 1/4 the smallest dimension)
     radius_px = float(min(float(image.shape[1]), float(image.shape[0]))) / 4.0
 
-    return calc_compass_radius(image, x, y, radius_px)
+    return calc_compass_radius(image, x, y, radius_px, w)
 
 def rotate_pt(x_arr, y_arr, theta_deg, xoff=0, yoff=0):
     """
@@ -283,6 +337,80 @@ def transform(data_np, flip_x=False, flip_y=False, swap_xy=False):
 
     return data_np
 
+def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
+                out=None, logger=None):
+    """
+    Rotate numpy array `data_np` by `theta_deg` around rotation center
+    (rotctr_x, rotctr_y).  If the rotation center is omitted it defaults
+    to the center of the array.
+    No adjustment is done to the data array beforehand, so the result will
+    be clipped according to the size of the array (the output array will be
+    the same size as the input array).
+    """
+
+    # If there is no rotation, then we are done
+    if math.fmod(theta_deg, 360.0) == 0.0:
+        return data_np
+
+    ht, wd = data_np.shape[:2]
+    dtype = data_np.dtype
+
+    if rotctr_x is None:
+        rotctr_x = wd // 2
+    if rotctr_y is None:
+        rotctr_y = ht // 2
+
+    if logger is not None:
+        logger.debug("rotating with pillow")
+    img = PILimage.fromarray(data_np)
+    img_rot = img.rotate(theta_deg, resample=False, expand=False,
+                         center=(rotctr_x, rotctr_y))
+    newdata = np.array(img_rot, dtype=data_np.dtype)
+    new_ht, new_wd = newdata.shape[:2]
+    assert (wd == new_wd) and (ht == new_ht), \
+        Exception("rotated cutout is %dx%d original=%dx%d" % (
+            new_wd, new_ht, wd, ht))
+    '''
+    else:
+        if logger is not None:
+            logger.debug("rotating with numpy")
+        yi, xi = np.mgrid[0:ht, 0:wd]
+        xi -= rotctr_x
+        yi -= rotctr_y
+        cos_t = np.cos(np.radians(theta_deg))
+        sin_t = np.sin(np.radians(theta_deg))
+
+        if have_numexpr:
+            ap = ne.evaluate("(xi * cos_t) - (yi * sin_t) + rotctr_x")
+            bp = ne.evaluate("(xi * sin_t) + (yi * cos_t) + rotctr_y")
+        else:
+            ap = (xi * cos_t) - (yi * sin_t) + rotctr_x
+            bp = (xi * sin_t) + (yi * cos_t) + rotctr_y
+
+        #ap = np.rint(ap).clip(0, wd-1).astype(np.int)
+        #bp = np.rint(bp).clip(0, ht-1).astype(np.int)
+        # Optomizations to reuse existing intermediate arrays
+        np.rint(ap, out=ap)
+        ap = ap.astype(np.int, copy=False)
+        ap.clip(0, wd - 1, out=ap)
+        np.rint(bp, out=bp)
+        bp = bp.astype(np.int, copy=False)
+        bp.clip(0, ht - 1, out=bp)
+
+        if out is not None:
+            out[:, :, ...] = data_np[bp, ap]
+            newdata = out
+        else:
+            newdata = data_np[bp, ap]
+            new_ht, new_wd = newdata.shape[:2]
+
+            assert (wd == new_wd) and (ht == new_ht), \
+                Exception("rotated cutout is %dx%d original=%dx%d" % (
+                    new_wd, new_ht, wd, ht))
+    '''
+    return newdata
+
+
 def rotate(data_np, theta_deg, rotctr_x=None, rotctr_y=None, pad=20,
            logger=None):
 
@@ -300,36 +428,38 @@ def rotate(data_np, theta_deg, rotctr_x=None, rotctr_y=None, pad=20,
     dims = (new_ht, new_wd) + data_np.shape[2:]
     # Find center of new data array
     ncx, ncy = new_wd // 2, new_ht // 2
+    '''
+        if have_opencl and _use == 'opencl':
+            if logger is not None:
+                logger.debug("rotating with OpenCL")
+            # find offsets of old image in new image
+            dx, dy = ncx - ocx, ncy - ocy
 
-    if have_opencl and _use == 'opencl':
-        if logger is not None:
-            logger.debug("rotating with OpenCL")
-        # find offsets of old image in new image
-        dx, dy = ncx - ocx, ncy - ocy
+            newdata = trcalc_cl.rotate(data_np, theta_deg,
+                                       rotctr_x=rotctr_x, rotctr_y=rotctr_y,
+                                       clip_val=0, out=None,
+                                       out_wd=new_wd, out_ht=new_ht,
+                                       out_dx=dx, out_dy=dy)
+    '''
+    #else:
+    # Overlay the old image on the new (blank) image
+    ldx, rdx = min(ocx, ncx), min(wd - ocx, ncx)
+    bdy, tdy = min(ocy, ncy), min(ht - ocy, ncy)
 
-        newdata = trcalc_cl.rotate(data_np, theta_deg,
-                                   rotctr_x=rotctr_x, rotctr_y=rotctr_y,
-                                   clip_val=0, out=None,
-                                   out_wd=new_wd, out_ht=new_ht,
-                                   out_dx=dx, out_dy=dy)
-    else:
-        # Overlay the old image on the new (blank) image
-        ldx, rdx = min(ocx, ncx), min(wd - ocx, ncx)
-        bdy, tdy = min(ocy, ncy), min(ht - ocy, ncy)
+    # TODO: fill with a different value?
+    newdata = np.zeros(dims, dtype=data_np.dtype)
+    newdata[ncy - bdy:ncy + tdy, ncx - ldx:ncx + rdx] = \
+        data_np[ocy - bdy:ocy + tdy, ocx - ldx:ocx + rdx]
 
-        # TODO: fill with a different value?
-        newdata = np.zeros(dims, dtype=data_np.dtype)
-        newdata[ncy - bdy:ncy + tdy, ncx - ldx:ncx + rdx] = \
-            data_np[ocy - bdy:ocy + tdy, ocx - ldx:ocx + rdx]
-
-        # Now rotate with clip as usual
-        newdata = rotate_clip(newdata, theta_deg,
-                              rotctr_x=rotctr_x, rotctr_y=rotctr_y,
-                              out=newdata)
+    # Now rotate with clip as usual
+    newdata = rotate_clip(newdata, theta_deg,
+                          rotctr_x=rotctr_x, rotctr_y=rotctr_y,
+                          out=newdata)
     return newdata
 
-def orient(image, righthand=False):
-        (x, y, xn, yn, xe, ye) = calc_compass_center(image)
+
+def orient(image, w, righthand=False):
+        (x, y, xn, yn, xe, ye) = calc_compass_center(image, w)
         degn = math.degrees(math.atan2(xn - x, yn - y))
         # rotate east point also by degn
         xe2, ye2 = rotate_pt(xe, ye, degn, xoff=x, yoff=y)
@@ -342,25 +472,35 @@ def orient(image, righthand=False):
         if xflip:
             degn = - degn
 
-        newdata = transform(image_data, xflip, False, False)
-        newdata = rotate(image_data, degn)
+        newdata = transform(image, xflip, False, False)
+        newdata = rotate(image, degn)
         return newdata
 
 
 def plotIm(image_data):
     plt.figure()
-    plt.imshow(image_data, cmap='gray', norm=colors.LogNorm())
+    plt.imshow(image_data, cmap='gray')
     plt.colorbar()
     plt.show()
 
+def writeFits(headerinfo, image_data):
+    hdu = fits.PrimaryHDU()
+    hdu.data = image_data
+    hdu.header = headerinfo
+    hdu.writeto('rotatedImage.fits')
+
 def main():
+    f = fits.open(args.file)
     fitsData = fits.getdata(args.file, ext=0)
-    newdata = orient(fitsData)
+    w = wcs.WCS(f[0].header)
+    header = fits.getheader(args.file)
+    newdata = orient(fitsData, w)
     plotIm(newdata)
+    writeFits(header, newdata)
+
 
 if __name__=="__main__":
     try:
-        while True:
-            main()
+        main()
     except KeyboardInterrupt:
         print('stopping...')

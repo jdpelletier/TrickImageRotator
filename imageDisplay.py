@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from astropy.visualization import astropy_mpl_style
 from matplotlib import colors
+from PIL import Image
 
 plt.style.use(astropy_mpl_style)
 
@@ -30,6 +31,7 @@ def scan(timeout, cachedFiles):
         filen = files[0]
         waitForFileToBeUnlocked(filen, 1);
         plotIm(filename=filen)
+        displayIm()
         print("File closed")
     time.sleep(timeout)
     return cachedFiles
@@ -91,9 +93,20 @@ def stop_scan():
 def plotIm(filename):
     image_data = fits.getdata(filename, ext=0)
     plt.figure()
-    plt.imshow(image_data, cmap='gray', norm=colors.LogNorm())
+    plt.imshow(image_data, cmap='gray')
     plt.colorbar()
+    plt.savefig("TRICKFullFrame.jpeg")
     plt.show()
+
+
+def displayIm():
+    im = Image.open("TRICKFullFrame.jpeg")
+    rotated = im.rotate(45)
+    transposed = im.transpose(Image.ROTATE_90)
+    im.show()
+    rotated.show()
+    transposed.show()
+
 
 #####
 

@@ -277,7 +277,6 @@ def calc_compass(image, x, y, len_deg_e, len_deg_n, w):
     # Get east and north coordinates
     xe, ye = add_offset_xy(image, x, y, len_deg_e, 0.0, w)
     xn, yn = add_offset_xy(image, x, y, 0.0, len_deg_n, w)
-
     return (x, y, xn, yn, xe, ye)
 
 
@@ -493,10 +492,11 @@ def main():
     f = fits.open(args.file)
     fitsData = fits.getdata(args.file, ext=0)
     w = wcs.WCS(f[0].header)
+    w.wcs.print_contents()
     header = fits.getheader(args.file)
     newdata = orient(fitsData, w)
-    plotIm(newdata)
-    writeFits(header, newdata)
+#    plotIm(newdata)
+#    writeFits(header, newdata)
 
 
 if __name__=="__main__":

@@ -36,7 +36,8 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
         rotctr_x = wd // 2
     if rotctr_y is None:
         rotctr_y = ht // 2
-#pil rot
+
+    #pil rot
     img = PILimage.fromarray(data_np)
     img_rot = img.rotate(theta_deg, resample=False, expand=False,
                          center=(rotctr_x, rotctr_y))
@@ -46,7 +47,7 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
         Exception("rotated cutout is %dx%d original=%dx%d" % (
             new_wd, new_ht, wd, ht))
     '''
-#numpy rot
+    #numpy rot
     yi, xi = np.mgrid[0:ht, 0:wd]
     xi -= rotctr_x
     yi -= rotctr_y
@@ -80,8 +81,8 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
         assert (wd == new_wd) and (ht == new_ht), \
             Exception("rotated cutout is %dx%d original=%dx%d" % (
                 new_wd, new_ht, wd, ht))
-'''
-#end np rot
+    #end np rot
+    '''
     return newdata
 
 def plotIm(image_data):

@@ -8,6 +8,7 @@ from astropy.visualization import astropy_mpl_style
 from matplotlib import colors
 import PIL.Image as PILimage
 import math
+import subprocess
 
 #import ktl
 
@@ -42,7 +43,7 @@ def scan(timeout, cachedFiles):
         fitsData = fits.getdata(filen, ext=0)
         header = fits.getheader(filen)
         newdata = rotate_clip(fitsData, 45, 942, 747)
-        writeFits(header, newdata)
+        displayFits(writeFits(header, newdata))
         print("File closed")
     time.sleep(timeout)
     return cachedFiles
@@ -133,61 +134,27 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
     assert (wd == new_wd) and (ht == new_ht), \
         Exception("rotated cutout is %dx%d original=%dx%d" % (
             new_wd, new_ht, wd, ht))
-    '''
-    #numpy rot
-    yi, xi = np.mgrid[0:ht, 0:wd]
-    xi -= rotctr_x
-    yi -= rotctr_y
-    cos_t = np.cos(np.radians(theta_deg))
-    sin_t = np.sin(np.radians(theta_deg))
-
-    if have_numexpr:
-        ap = ne.evaluate("(xi * cos_t) - (yi * sin_t) + rotctr_x")
-        bp = ne.evaluate("(xi * sin_t) + (yi * cos_t) + rotctr_y")
-    else:
-        ap = (xi * cos_t) - (yi * sin_t) + rotctr_x
-        bp = (xi * sin_t) + (yi * cos_t) + rotctr_y
-
-    #ap = np.rint(ap).clip(0, wd-1).astype(np.int)
-    #bp = np.rint(bp).clip(0, ht-1).astype(np.int)
-    # Optomizations to reuse existing intermediate arrays
-    np.rint(ap, out=ap)
-    ap = ap.astype(np.int, copy=False)
-    ap.clip(0, wd - 1, out=ap)
-    np.rint(bp, out=bp)
-    bp = bp.astype(np.int, copy=False)
-    bp.clip(0, ht - 1, out=bp)
-
-    if out is not None:
-        out[:, :, ...] = data_np[bp, ap]
-        newdata = out
-    else:
-        newdata = data_np[bp, ap]
-        new_ht, new_wd = newdata.shape[:2]
-
-        assert (wd == new_wd) and (ht == new_ht), \
-            Exception("rotated cutout is %dx%d original=%dx%d" % (
-                new_wd, new_ht, wd, ht))
-    #end np rot
-    '''
     return newdata
 
 def writeFits(headerinfo, image_data):
     hdu = fits.PrimaryHDU()
     hdu.data = image_data
     hdu.header = headerinfo
+    filename = 'rotatedImage.fits'
     try:
-        hdu.writeto('rotatedImage.fits')
+        hdu.writeto(filename)
     except OSError:
-        os.remove('rotatedImage.fits')
-        hdu.writeto('rotatedImage.fits')
+        os.remove(filename)
+        hdu.writeto(filename)
+    return filename
 
-
+def displayFits(filename):
+    subprocess.Popen("ds9 rotatedImage.fits", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 #####
 
 def main():
     cachedFiles = None
-    cachedFiles = walkDirectory();
+    cachedFiles = walkDirectory()
     print("Scan started...")
     try:
         while True:

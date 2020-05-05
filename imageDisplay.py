@@ -2,17 +2,13 @@ import os, time, sys
 from os import listdir
 from os.path import abspath, isfile, join
 import numpy as np
-import matplotlib.pyplot as plt
 from astropy.io import fits
-from astropy.visualization import astropy_mpl_style
-from matplotlib import colors
 import PIL.Image as PILimage
 import math
 import subprocess
 
 #import ktl
 
-plt.style.use(astropy_mpl_style)
 
 #curAngle = ktl.cache('dcs', 'ROTPOSN')
 #parAngle = ktl.cache('dcs', 'PARANG')
@@ -149,8 +145,12 @@ def writeFits(headerinfo, image_data):
     return filename
 
 def displayFits(filename):
-    subprocess.Popen("ds9 rotatedImage.fits", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
-#####
+    command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
+    "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
+    "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1970' " \
+    "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text='N'' " \
+    "-regions command 'text 150 1710 #text='E''" % filename
+    subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 
 def main():
     cachedFiles = None

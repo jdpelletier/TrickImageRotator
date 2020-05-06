@@ -11,12 +11,10 @@ import subprocess
 
 
 #curAngle = ktl.cache('dcs', 'ROTPOSN')
-#parAngle = ktl.cache('dcs', 'PARANG')
 
-#def rotAngle(current, para):
+#def rotAngle(current):
 #    cur = current.read()
-#    par = para.read()
-#    return par - cur
+#    return -cur
 
 def walkDirectory():
     directory = '.'
@@ -149,7 +147,7 @@ def displayFits(filename):
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
     "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1970' " \
     "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text='N'' " \
-    "-regions command 'text 150 1710 #text='E'' -regions command 'line 924 100 1124 100' " \ 
+    "-regions command 'text 150 1710 #text='E'' -regions command 'line 924 100 1124 100' " \
     "-regions command 'text 1024 50 #text= '10 as' font='bold''" % filename
     subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 

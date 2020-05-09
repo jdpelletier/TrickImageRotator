@@ -7,14 +7,22 @@ import PIL.Image as PILimage
 import math
 import subprocess
 
-#import ktl
+import ktl
+
+#Cache KTL keywords
+curAngle = ktl.cache('dcs', 'ROTPOSN')
+# for all of these, check for numbers
+trickSPOCROLocX = ktl.cache('ao', 'TKSPCRLX')
+trickROX = ktl.cache('trick', 'TRKRO1X')
+trickSPOCROSizeX = ktl.cache('ao', 'TKSPCSZX')
+trickROSX = ktl.cache('trick', 'TRKRO1SX')
+trickSPOCROLocY = ktl.cache('ao', 'TKSPCRLY')
+trickROY = ktl.cache('trick', 'TRKRO1Y')
 
 
-#curAngle = ktl.cache('dcs', 'ROTPOSN')
-
-#def rotAngle(current):
-#    cur = current.read()
-#    return -cur
+def rotAngle():
+    cur = curAngle.read()
+    return -cur
 
 def walkDirectory():
     directory = '.'
@@ -36,7 +44,7 @@ def scan(timeout, cachedFiles):
         waitForFileToBeUnlocked(filen, 1)
         fitsData = fits.getdata(filen, ext=0)
         header = fits.getheader(filen)
-        newdata = rotate_clip(fitsData, 45, 942, 747)
+        newdata = rotate_clip(fitsData, rotAngle(), 942, 747)
         displayFits(writeFits(header, newdata))
         print("File closed")
     time.sleep(timeout)
@@ -130,6 +138,17 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
             new_wd, new_ht, wd, ht))
     return newdata
 
+def buildROIBox():
+    ROIsz = trickSPOCROSizeX.read()/trickROSX.read()
+    xROI = (trickSPOCROLocX.read()/trickROX.read()) + ROIsz/2!! #TODO figure out what !! means, XCenter
+    yROI = (trickSPOCROLocY.read()/trickROY.read()) + ROIsz/2!! #YCenter
+    left = xROI - ROIsz/2
+    right = xROI + ROIsz/2
+    up = yROI + ROIsz/2
+    down = yROI - ROIsz/2
+    return left, right, up, down
+
+
 def writeFits(headerinfo, image_data):
     hdu = fits.PrimaryHDU()
     hdu.data = image_data
@@ -143,12 +162,16 @@ def writeFits(headerinfo, image_data):
     return filename
 
 def displayFits(filename):
+    left, right, up, down = buildROIBox()
     command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
     "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1970' " \
     "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text='N'' " \
+    "-regions command 'line %s %s %s %s' -regions command 'line %s %s %s %s' " \
+    "-regions command 'line %s %s %s %s' -regions command 'line %s %s %s %s' " \
     "-regions command 'text 150 1710 #text='E'' -regions command 'line 924 100 1124 100' " \
-    "-regions command 'text 1024 50 #text= '10 as' font='bold''" % filename
+    "-regions command 'text 1024 50 #text= '10 as' font='bold''" \
+    % (filename, left, up, left, down, left, down, right, down, right, down, right, up, right, up, left, up)
     subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 
 def main():

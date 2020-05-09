@@ -175,6 +175,13 @@ def displayFits(filename):
     subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 
 def main():
+    ##Write dummy file so walkDirectory caches it in the beginning
+    hdu = fits.PrimaryHDU()
+    try:
+        hdu.writeto('rotatedImage.fits')
+    except OSError:
+        os.remove('rotatedImage.fits')
+        hdu.writeto('rotatedImage.fits')
     cachedFiles = None
     cachedFiles = walkDirectory()
     print("Scan started...")

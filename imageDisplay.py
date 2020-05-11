@@ -22,7 +22,7 @@ trickROY = ktl.cache('trick', 'TRKRO1Y')
 
 def rotAngle():
     cur = curAngle.read()
-    return -cur
+    return -float(cur)
 
 def walkDirectory():
     directory = '.'
@@ -139,9 +139,9 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
     return newdata
 
 def buildROIBox():
-    ROIsz = trickSPOCROSizeX.read()/trickROSX.read()
-    xROI = (trickSPOCROLocX.read()/trickROX.read()) + ROIsz/2!! #TODO figure out what !! means, XCenter
-    yROI = (trickSPOCROLocY.read()/trickROY.read()) + ROIsz/2!! #YCenter
+    ROIsz = int(trickSPOCROSizeX.read())/int(trickROSX.read())
+    xROI = (int(trickSPOCROLocX.read())/int(trickROX.read())) + ROIsz/2!! #TODO figure out what !! means, XCenter
+    yROI = (int(trickSPOCROLocY.read())/int(trickROY.read())) + ROIsz/2!! #YCenter
     left = xROI - ROIsz/2
     right = xROI + ROIsz/2
     up = yROI + ROIsz/2
@@ -165,13 +165,12 @@ def displayFits(filename):
     left, right, up, down = buildROIBox()
     command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
-    "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1970' " \
-    "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text='N'' " \
-    "-regions command 'line %s %s %s %s' -regions command 'line %s %s %s %s' " \
-    "-regions command 'line %s %s %s %s' -regions command 'line %s %s %s %s' " \
-    "-regions command 'text 150 1710 #text='E'' -regions command 'line 924 100 1124 100' " \
-    "-regions command 'text 1024 50 #text= '10 as' font='bold''" \
-    % (filename, left, up, left, down, left, down, right, down, right, down, right, up, right, up, left, up)
+    "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1790' " \
+    "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text=\"N\"' " \
+    "-regions command 'line %d %d %d %d' -regions command 'line %d %d %d %d' " \
+    "-regions command 'line %d %d %d %d' -regions command 'line %d %d %d %d' " \
+    "-regions command 'text 150 1710 #text=\"E\"' -regions command 'line 924 100 1124 100' " \
+    "-regions command 'text 1024 50 #text= \"10 as\" font=\"bold\"'" % (filename, left, up, left, down, left, down, right, down, right, down, right, up, right, up, left, up)
     subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 
 def main():

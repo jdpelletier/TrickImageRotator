@@ -162,6 +162,10 @@ def writeFits(headerinfo, image_data):
     return filename
 
 def displayFits(filename):
+    pgrep = subprocess.Popen("pgrep ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
+    (output, err) = pgrep.communicate()
+    if output != '':
+        subprocess.Popen("pkill ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
     left, right, up, down = buildROIBox()
     command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \

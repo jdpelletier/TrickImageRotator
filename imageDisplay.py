@@ -1,31 +1,39 @@
 import os, time, sys
 from os import listdir
 from os.path import abspath, isfile, join
+from pathlib import Path
+import math
+import subprocess
+import datetime
+
 import numpy as np
 from astropy.io import fits
 import PIL.Image as PILimage
-import math
-import subprocess
+
 
 import ktl
 
 #Cache KTL keywords
-curAngle = ktl.cache('dcs', 'ROTPOSN')
-# for all of these, check for numbers
-trickSPOCROLocX = ktl.cache('ao', 'TKSPCRLX')
-trickROX = ktl.cache('trick', 'TRKRO1X')
-trickSPOCROSizeX = ktl.cache('ao', 'TKSPCSZX')
-trickROSX = ktl.cache('trick', 'TRKRO1SX')
-trickSPOCROLocY = ktl.cache('ao', 'TKSPCRLY')
-trickROY = ktl.cache('trick', 'TRKRO1Y')
-
+curAngle = ktl.cache('dcs', 'rotdest')
+trickxpos = ktl.cache('ao', 'TRKRO1XP')
+trickypos = ktl.cache('ao', 'TRKRO1YP')
+trickxsize = ktl.cache('ao', 'TRKRO1XS')
+trickysize = ktl.cache('ao', 'TRKRO1YS')
 
 def rotAngle():
     cur = curAngle.read()
-    return -float(cur)
+    final = float(cur)-45.0 #TODO figure out if this angle is right
+    return final
+
+def nightpath():
+    nightly = Path('/net/k1aoserver/k1aodata/nightly')
+    date = datetime.datetime.utcnow()
+    year, month, day = str(date.strftime("%y")), str(date.strftime("%m")), str(date.strftime("%d"))
+    nightly = nightly / year / month / day / 'Trick'
+    return nightly
 
 def walkDirectory():
-    directory = '.'
+    directory = nightpath()
     return [abspath(join(directory, f)) for f in listdir(directory) if isfile(join(directory, f))]
 
 
@@ -39,14 +47,14 @@ def updateFileCache(cachedFiles):
 def scan(timeout, cachedFiles):
     hasNewFiles, files, cachedFiles = updateFileCache(cachedFiles)
     if hasNewFiles:
-        print("New File Detected!")
+        print("New Image Detected!")
         filen = files[0]
         waitForFileToBeUnlocked(filen, 1)
         fitsData = fits.getdata(filen, ext=0)
         header = fits.getheader(filen)
+        print("Rotating image %f degrees" % rotAngle())
         newdata = rotate_clip(fitsData, rotAngle(), 942, 747)
         displayFits(writeFits(header, newdata))
-        print("File closed")
     time.sleep(timeout)
     return cachedFiles
 
@@ -57,14 +65,13 @@ def fileIsCurrentlyLocked(filepath):
     if os.path.exists(filepath):
         try:
             print("Trying to open %s." % filepath)
-
+            time.sleep(15) #TODO change this to catch empty file error
             hdulist = fits.open(filepath)
 
             file_object = np.sum([1 for hdu in hdulist if type(hdu) in
                     	[fits.hdu.image.PrimaryHDU, fits.hdu.image.ImageHDU]
                     	and hdu.data is not None])
             if file_object:
-                print("%s is not locked." % filepath)
                 locked = False
 
         except TypeError:
@@ -74,7 +81,6 @@ def fileIsCurrentlyLocked(filepath):
         finally:
             if file_object:
                 hdulist.close()
-                print("%s closed." % filepath)
 
     else:
         print("%s not found." % filepath)
@@ -139,13 +145,11 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
     return newdata
 
 def buildROIBox():
-    ROIsz = int(trickSPOCROSizeX.read())/int(trickROSX.read())
-    xROI = (int(trickSPOCROLocX.read())/int(trickROX.read())) + ROIsz/2!! #TODO figure out what !! means, XCenter
-    yROI = (int(trickSPOCROLocY.read())/int(trickROY.read())) + ROIsz/2!! #YCenter
-    left = xROI - ROIsz/2
-    right = xROI + ROIsz/2
-    up = yROI + ROIsz/2
-    down = yROI - ROIsz/2
+    #TODO double check this, rotate it
+    left = int(trickxpos.read())
+    right = int(trickxpos.read()) + int(trickxsize.read())
+    up = int(trickypos.read())
+    down = int(trickypos.read()) + int(trickysize.read())
     return left, right, up, down
 
 

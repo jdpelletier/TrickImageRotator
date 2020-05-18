@@ -20,6 +20,11 @@ trickypos = ktl.cache('ao', 'TRKRO1YP')
 trickxsize = ktl.cache('ao', 'TRKRO1XS')
 trickysize = ktl.cache('ao', 'TRKRO1YS')
 
+
+#TODO:
+#add osiris FOV
+
+
 def rotAngle():
     cur = curAngle.read()
     final = float(cur)-45.0 #TODO figure out if this angle is right
@@ -52,9 +57,10 @@ def scan(timeout, cachedFiles):
         waitForFileToBeUnlocked(filen, 1)
         fitsData = fits.getdata(filen, ext=0)
         header = fits.getheader(filen)
+        procdata = processImage(fitsData)
         print("Rotating image %f degrees" % rotAngle())
-        newdata = rotate_clip(fitsData, rotAngle(), 942, 747)
-        displayFits(writeFits(header, newdata))
+        newdata = rotate_clip(procdata, rotAngle(), 942, 747)
+        displayFits(*writeFits(header, newdata))
     time.sleep(timeout)
     return cachedFiles
 
@@ -65,7 +71,7 @@ def fileIsCurrentlyLocked(filepath):
     if os.path.exists(filepath):
         try:
             print("Trying to open %s." % filepath)
-            time.sleep(15) #TODO change this to catch empty file error
+            #time.sleep(15) #place holder if OSError catch doesn't work
             hdulist = fits.open(filepath)
 
             file_object = np.sum([1 for hdu in hdulist if type(hdu) in
@@ -75,7 +81,9 @@ def fileIsCurrentlyLocked(filepath):
                 locked = False
 
         except TypeError:
-            print("File is locked (unable to open in append mode)")
+            locked = True
+
+        except OSError:
             locked = True
 
         finally:
@@ -109,6 +117,12 @@ def stop_scan():
     print("Shutting down...")
     sys.exit()
 
+
+def processImage(fitsdata):
+    mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
+    maskedData = np.multiply(fitsdata, mask)
+    background = np.median(maskedData)
+    return maskedData - background
 
 def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
                 out=None, logger=None):
@@ -144,13 +158,58 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
             new_wd, new_ht, wd, ht))
     return newdata
 
-def buildROIBox():
+def rotate_box(data_np, theta_deg, rotctr_x, rotctr_y):
+    ht, wd = data_np.shape[:2]
+    dtype = data_np.dtype
+
+    if rotctr_x is None:
+        rotctr_x = wd // 2
+    if rotctr_y is None:
+        rotctr_y = ht // 2
+
+    yi, xi = np.mgrid[0:ht, 0:wd]
+    xi -= rotctr_x
+    yi -= rotctr_y
+    cos_t = np.cos(np.radians(theta_deg))
+    sin_t = np.sin(np.radians(theta_deg))
+
+    ap = (xi * cos_t) - (yi * sin_t) + rotctr_x
+    bp = (xi * sin_t) + (yi * cos_t) + rotctr_y
+    # Optomizations to reuse existing intermediate arrays
+    np.rint(ap, out=ap)
+    ap = ap.astype(np.int, copy=False)
+    ap.clip(0, wd - 1, out=ap)
+    np.rint(bp, out=bp)
+    bp = bp.astype(np.int, copy=False)
+    bp.clip(0, ht - 1, out=bp)
+
+    newdata = data_np[bp, ap]
+    new_ht, new_wd = newdata.shape[:2]
+    return newdata
+
+def buildROIBox(data):
     #TODO double check this, rotate it
     left = int(trickxpos.read())
-    right = int(trickxpos.read()) + int(trickxsize.read())
+    right = int(trickxpos.read()) + int(trickxsize.read())*5
     up = int(trickypos.read())
-    down = int(trickypos.read()) + int(trickysize.read())
-    return left, right, up, down
+    down = int(trickypos.read()) + int(trickysize.read())*5
+    ht, wd = data.shape[:2]
+    box_image = np.zeros((ht, wd))
+    box_image[left][up] = 1
+    box_image[right][up] = 1
+    box_image[right][down] = 1
+    box_image[left][down] = 1
+    box_image = rotate_box(box_image, rotAngle(), 942, 747)
+    result = np.where(box_image == 1)
+    tx = result[0][0]
+    ty = result[1][0]
+    lx = result[0][1]
+    ly = result[1][1]
+    rx = result[0][2]
+    ry = result[1][2]
+    bx = result[0][3]
+    by = result[1][3]
+    return tx, ty, lx, ly, rx, ry, bx, by
 
 
 def writeFits(headerinfo, image_data):
@@ -163,22 +222,22 @@ def writeFits(headerinfo, image_data):
     except OSError:
         os.remove(filename)
         hdu.writeto(filename)
-    return filename
+    return filename, image_data
 
-def displayFits(filename):
+def displayFits(filename, data):
     pgrep = subprocess.Popen("pgrep ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
     (output, err) = pgrep.communicate()
     if output != '':
         subprocess.Popen("pkill ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
-    left, right, up, down = buildROIBox()
+    tx, ty, lx, ly, rx, ry, bx, by = buildROIBox(data)
     command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
     "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1790' " \
     "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text=\"N\"' " \
-    "-regions command 'line %d %d %d %d' -regions command 'line %d %d %d %d' " \
-    "-regions command 'line %d %d %d %d' -regions command 'line %d %d %d %d' " \
+    "-regions command 'line %d %d %d %d #color = red' -regions command 'line %d %d %d %d #color = red' " \
+    "-regions command 'line %d %d %d %d #color = red' -regions command 'line %d %d %d %d #color = red' " \
     "-regions command 'text 150 1710 #text=\"E\"' -regions command 'line 924 100 1124 100' " \
-    "-regions command 'text 1024 50 #text= \"10 as\" font=\"bold\"'" % (filename, left, up, left, down, left, down, right, down, right, down, right, up, right, up, left, up)
+    "-regions command 'text 1024 50 #text= \"10 as\" font=\"bold\"'" % (filename, lx, ly, tx, ty, tx, ty, rx, ry, rx, ry, bx, by, bx, by, lx, ly)
     subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
 
 def main():

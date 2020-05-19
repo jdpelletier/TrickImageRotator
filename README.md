@@ -10,10 +10,10 @@ scanning the directory /net/k1aoserver/k1aodata/nightly for new images. Once a n
 image is found, the data is pulled and processed, then displayed with ds9_80.
 
 # Current functions
->Rotates image to north up, east left (alledgedly....)
->Displays current ROI spot
->Adds compass rose and scale for user
+-Rotates image to north up, east left (alledgedly....)
+-Displays current ROI spot
+-Adds compass rose and scale for user
 
 # Future additions
->Boxes showing where OSIMG and OSPEC are looking
->Ditching ds9 for python built gui
+-Boxes showing where OSIMG and OSPEC are looking
+-Ditching ds9 for python built gui

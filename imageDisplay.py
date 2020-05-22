@@ -27,7 +27,7 @@ trickysize = ktl.cache('ao', 'TRKRO1YS')
 
 def rotAngle():
     cur = curAngle.read()
-    final = float(cur)-45.0 #TODO figure out if this angle is right
+    final = 269.5 - float(cur)#TODO figure out if this angle is right
     return final
 
 def nightpath():

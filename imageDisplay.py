@@ -27,8 +27,15 @@ trickysize = ktl.cache('ao', 'TRKRO1YS')
 
 def rotAngle():
     cur = curAngle.read()
-    final = 269.5 - float(cur)#TODO figure out if this angle is right
+    final = 179.5 - float(cur)#TODO figure out if this angle is right
     return final
+
+def getROI():
+    left = int(trickxpos.read())
+    right = int(trickxpos.read()) + int(trickxsize.read())*5
+    up = int(trickypos.read())
+    down = int(trickypos.read()) + int(trickysize.read())*5
+    return left, right, up, down
 
 def nightpath():
     nightly = Path('/net/k1aoserver/k1aodata/nightly')
@@ -58,9 +65,10 @@ def scan(timeout, cachedFiles):
         fitsData = fits.getdata(filen, ext=0)
         header = fits.getheader(filen)
         procdata = processImage(fitsData)
+        procdata, max = buildROIBox(procdata)
         print("Rotating image %f degrees" % rotAngle())
-        newdata = rotate_clip(procdata, rotAngle(), 942, 747)
-        displayFits(*writeFits(header, newdata))
+        procdata = rotate_clip(procdata, rotAngle(), 942, 747)
+        displayFits(header, procdata, max)
     time.sleep(timeout)
     return cachedFiles
 
@@ -158,59 +166,27 @@ def rotate_clip(data_np, theta_deg, rotctr_x=None, rotctr_y=None,
             new_wd, new_ht, wd, ht))
     return newdata
 
-def rotate_box(data_np, theta_deg, rotctr_x, rotctr_y):
-    ht, wd = data_np.shape[:2]
-    dtype = data_np.dtype
-
-    if rotctr_x is None:
-        rotctr_x = wd // 2
-    if rotctr_y is None:
-        rotctr_y = ht // 2
-
-    yi, xi = np.mgrid[0:ht, 0:wd]
-    xi -= rotctr_x
-    yi -= rotctr_y
-    cos_t = np.cos(np.radians(theta_deg))
-    sin_t = np.sin(np.radians(theta_deg))
-
-    ap = (xi * cos_t) - (yi * sin_t) + rotctr_x
-    bp = (xi * sin_t) + (yi * cos_t) + rotctr_y
-    # Optomizations to reuse existing intermediate arrays
-    np.rint(ap, out=ap)
-    ap = ap.astype(np.int, copy=False)
-    ap.clip(0, wd - 1, out=ap)
-    np.rint(bp, out=bp)
-    bp = bp.astype(np.int, copy=False)
-    bp.clip(0, ht - 1, out=bp)
-
-    newdata = data_np[bp, ap]
-    new_ht, new_wd = newdata.shape[:2]
-    return newdata
-
 def buildROIBox(data):
-    #TODO double check this, rotate it
-    left = int(trickxpos.read())
-    right = int(trickxpos.read()) + int(trickxsize.read())*5
-    up = int(trickypos.read())
-    down = int(trickypos.read()) + int(trickysize.read())*5
-    ht, wd = data.shape[:2]
-    box_image = np.zeros((ht, wd))
-    box_image[left][up] = 1
-    box_image[right][up] = 1
-    box_image[right][down] = 1
-    box_image[left][down] = 1
-    box_image = rotate_box(box_image, rotAngle(), 942, 747)
-    result = np.where(box_image == 1)
-    tx = result[0][0]
-    ty = result[1][0]
-    lx = result[0][1]
-    ly = result[1][1]
-    rx = result[0][2]
-    ry = result[1][2]
-    bx = result[0][3]
-    by = result[1][3]
-    return tx, ty, lx, ly, rx, ry, bx, by
+    left, right, up, down = getROI()
+    max = np.amax(data) + 1.0
+    data[left][up] = max
+    data[right][up] = max
+    data[right][down] = max
+    data[left][down] = max
+    return data, max
 
+def findBox(data, max):
+    result = np.where(data == max)
+    print(result)
+    ty = result[0][0]
+    tx = result[1][0]
+    ly = result[0][1]
+    lx = result[1][1]
+    ry = result[0][2]
+    rx = result[1][2]
+    by = result[0][3]
+    bx = result[1][3]
+    return tx, ty, lx, ly, rx, ry, bx, by
 
 def writeFits(headerinfo, image_data):
     hdu = fits.PrimaryHDU()
@@ -222,15 +198,16 @@ def writeFits(headerinfo, image_data):
     except OSError:
         os.remove(filename)
         hdu.writeto(filename)
-    return filename, image_data
+    return filename
 
-def displayFits(filename, data):
+def displayFits(headerinfo, newdata, max):
     pgrep = subprocess.Popen("pgrep ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
     (output, err) = pgrep.communicate()
     if output != '':
         subprocess.Popen("pkill ds9_80", stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True)
-    tx, ty, lx, ly, rx, ry, bx, by = buildROIBox(data)
-    command = "ds9_80 %s -scale HISTEQU -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
+    tx, ty, lx, ly, rx, ry, bx, by = findBox(newdata, max)
+    filename = writeFits(headerinfo, newdata)
+    command = "ds9_80 %s -scale SQRT -zoom TO FIT -regions command 'line 240 1970 240 1790' " \
     "-regions command 'line 60 1790 240 1790' -regions command 'line 210 1940 240 1970' " \
     "-regions command 'line 240 1970 270 1940' -regions command 'line 90 1820 60 1790' " \
     "-regions command 'line 90 1760 60 1790' -regions command 'text 290 1880 #text=\"N\"' " \

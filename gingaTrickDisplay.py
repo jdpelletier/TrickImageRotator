@@ -24,7 +24,12 @@ class FitsViewer(QtGui.QMainWindow):
         self.logger = logger
 
         self.cachedFiles = None
-
+        hdu = fits.PrimaryHDU()
+        try:
+            hdu.writeto('blank.fits')
+        except OSError:
+            os.remove('blank.fits')
+            hdu.writeto('blank.fits')
         # create the ginga viewer and configure it
         fi = CanvasView(self.logger, render='widget')
         fi.enable_autocuts('on')
@@ -72,14 +77,16 @@ class FitsViewer(QtGui.QMainWindow):
         vw = QtGui.QWidget()
         self.setCentralWidget(vw)
         vw.setLayout(vbox)
+        self.dc = self.add_canvas()
+
+
+    def add_canvas(self, tag=None):
+        # add a canvas to the view
+        my_canvas = self.fitsimage.get_canvas()
+        DrawingCanvas = my_canvas.get_draw_class('rectangle')
+        return DrawingCanvas
 
     def start_scan(self):
-        hdu = fits.PrimaryHDU()
-        try:
-            hdu.writeto('procImage.fits')
-        except OSError:
-            os.remove('procImage.fits')
-            hdu.writeto('procImage.fits')
         self.cachedFiles = self.walkDirectory()
         self.thread = None
         self.runThread = True
@@ -87,9 +94,13 @@ class FitsViewer(QtGui.QMainWindow):
         self.scan(1, self.cachedFiles)
 
     def load_file(self, filepath):
+        filepath = self.processData(filepath)
         image = load_data(filepath, logger=self.logger)
         self.fitsimage.set_image(image)
 #        self.setWindowTitle(filepath)
+        self.box = self.dc(500, 200, 900, 600, color='green')
+
+        self.fitsimage.get_canvas().add(self.box, redraw=True)
         self.fitsimage.rotate(self.rotAngle())
 
     def open_file(self):
@@ -200,7 +211,7 @@ class FitsViewer(QtGui.QMainWindow):
                     print("New Image Detected!")
                     filen = files[0]
                     self.waitForFileToBeUnlocked(filen, 1)
-                    self.load_file(self.processData(filen))
+                    self.load_file(filen)
                 time.sleep(timeout)
         self.thread = threading.Thread(target=__target)
         self.thread.daemon = True
@@ -263,6 +274,8 @@ class FitsViewer(QtGui.QMainWindow):
         return self.writeFits(header, maskedData - background)
 
     def writeFits(self, headerinfo, image_data):
+        image = load_data('blank.fits', logger=self.logger)
+        self.fitsimage.set_image(image)
         hdu = fits.PrimaryHDU()
         hdu.data = image_data
         hdu.header = headerinfo
@@ -289,7 +302,7 @@ def main():
     logger = log.get_logger("example1", log_stderr=True, level=40)
 
     w = FitsViewer(logger)
-    w.resize(524, 540)
+    w.resize(700, 800)
     w.show()
     app.setActiveWindow(w)
     w.raise_()

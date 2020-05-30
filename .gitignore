@@ -4,3 +4,6 @@ galacticcenter.fits
 procImage.fits
 rotatedImage.fits
 t200424_000036.fits.gz
+*.fits
+*.gz
+gingaKTL.py

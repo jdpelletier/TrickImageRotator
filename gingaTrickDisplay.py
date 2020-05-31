@@ -15,7 +15,7 @@ from ginga.qtw.QtHelp import QtGui, QtCore
 from ginga.qtw.ImageViewQt import CanvasView, ScrolledView
 from ginga.util.loader import load_data
 
-#import ktl
+import ktl
 
 class FitsViewer(QtGui.QMainWindow):
 
@@ -24,12 +24,15 @@ class FitsViewer(QtGui.QMainWindow):
         self.logger = logger
 
         self.cachedFiles = None
-        hdu = fits.PrimaryHDU()
-        try:
-            hdu.writeto('blank.fits')
-        except OSError:
-            os.remove('blank.fits')
-            hdu.writeto('blank.fits')
+        #KTL stuff
+        #Cache KTL keywords
+        self.curAngle = ktl.cache('dcs', 'rotdest')
+        self.trickxpos = ktl.cache('ao', 'TRKRO1XP')
+        self.trickypos = ktl.cache('ao', 'TRKRO1YP')
+        self.trickxsize = ktl.cache('ao', 'TRKRO1XS')
+        self.trickysize = ktl.cache('ao', 'TRKRO1YS')
+
+
         # create the ginga viewer and configure it
         fi = CanvasView(self.logger, render='widget')
         fi.enable_autocuts('on')
@@ -87,6 +90,12 @@ class FitsViewer(QtGui.QMainWindow):
         return DrawingCanvas
 
     def start_scan(self):
+        hdu = fits.PrimaryHDU()
+        try:
+            hdu.writeto('procImage.fits')
+        except OSError:
+            os.remove('procImage.fits')
+            hdu.writeto('procImage.fits')
         self.cachedFiles = self.walkDirectory()
         self.thread = None
         self.runThread = True
@@ -98,14 +107,15 @@ class FitsViewer(QtGui.QMainWindow):
         image = load_data(filepath, logger=self.logger)
         self.fitsimage.set_image(image)
 #        self.setWindowTitle(filepath)
-        self.box = self.dc(500, 200, 900, 600, color='green')
+        left, right, up, down = self.getROI()
+        self.box = self.dc(left, down, right, up, color='green')
 
         self.fitsimage.get_canvas().add(self.box, redraw=True)
         self.fitsimage.rotate(self.rotAngle())
 
     def open_file(self):
         res = QtGui.QFileDialog.getOpenFileName(self, "Open FITS file",
-                                                ".", "FITS files (*.fits)")
+                                                ".")
         print(res)
         if isinstance(res, tuple):
             fileName = res[0]
@@ -160,12 +170,7 @@ class FitsViewer(QtGui.QMainWindow):
 
     ##Start of image find and processing code
 
-    #Cache KTL keywords
-    # curAngle = ktl.cache('dcs', 'rotdest')
-    # trickxpos = ktl.cache('ao', 'TRKRO1XP')
-    # trickypos = ktl.cache('ao', 'TRKRO1YP')
-    # trickxsize = ktl.cache('ao', 'TRKRO1XS')
-    # trickysize = ktl.cache('ao', 'TRKRO1YS')
+
 
 
     #TODO:
@@ -173,16 +178,17 @@ class FitsViewer(QtGui.QMainWindow):
 
 
     def rotAngle(self):
-        #cur = curAngle.read()
-        #final = 179.5 - float(cur)#TODO figure out if this angle is right
-        return 160
+        cur = self.curAngle.read()
+        final = 179.5 - float(cur)#TODO figure out if this angle is right
+        return final
 
-    # def getROI():
-    #     left = int(trickxpos.read())
-    #     right = int(trickxpos.read()) + int(trickxsize.read())*5
-    #     up = int(trickypos.read())
-    #     down = int(trickypos.read()) + int(trickysize.read())*5
-    #     return left, right, up, down
+    def getROI(self):
+        left = int(self.trickxpos.read())
+        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*5
+        up = int(self.trickypos.read())
+        down = int(self.trickypos.read()) + int(self.trickysize.read())*5
+        print("ROI box: %d %d %d %d" %(left, right, up, down))
+        return left, right, up, down
 
     def nightpath(self):
         # nightly = Path('/net/k1aoserver/k1aodata/nightly')
@@ -274,8 +280,6 @@ class FitsViewer(QtGui.QMainWindow):
         return self.writeFits(header, maskedData - background)
 
     def writeFits(self, headerinfo, image_data):
-        image = load_data('blank.fits', logger=self.logger)
-        self.fitsimage.set_image(image)
         hdu = fits.PrimaryHDU()
         hdu.data = image_data
         hdu.header = headerinfo

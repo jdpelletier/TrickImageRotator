@@ -7,3 +7,4 @@ t200424_000036.fits.gz
 *.fits
 *.gz
 gingaKTL.py
+addWCS.py

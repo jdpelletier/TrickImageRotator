@@ -8,12 +8,15 @@ import datetime
 
 import numpy as np
 from astropy.io import fits
+from astropy import wcs
 import PIL.Image as PILimage
 
+from ginga import Bindings
 from ginga.misc import log
 from ginga.qtw.QtHelp import QtGui, QtCore
 from ginga.qtw.ImageViewQt import CanvasView, ScrolledView
 from ginga.util.loader import load_data
+
 
 import ktl
 
@@ -26,7 +29,6 @@ class FitsViewer(QtGui.QMainWindow):
         self.cachedFiles = None
         #KTL stuff
         #Cache KTL keywords
-        self.curAngle = ktl.cache('dcs', 'rotdest')
         self.trickxpos = ktl.cache('ao', 'TRKRO1XP')
         self.trickypos = ktl.cache('ao', 'TRKRO1YP')
         self.trickxsize = ktl.cache('ao', 'TRKRO1XS')
@@ -44,8 +46,8 @@ class FitsViewer(QtGui.QMainWindow):
         self.fitsimage = fi
 
         # enable some user interaction
-        bd = fi.get_bindings()
-        bd.enable_all(True)
+        self.bd = fi.get_bindings()
+        self.bd.enable_all(True)
 
         w = fi.get_widget()
         w.resize(512, 512)
@@ -80,14 +82,15 @@ class FitsViewer(QtGui.QMainWindow):
         vw = QtGui.QWidget()
         self.setCentralWidget(vw)
         vw.setLayout(vbox)
-        self.dc = self.add_canvas()
+        self.recdc, self.compdc = self.add_canvas()
 
 
     def add_canvas(self, tag=None):
         # add a canvas to the view
         my_canvas = self.fitsimage.get_canvas()
-        DrawingCanvas = my_canvas.get_draw_class('rectangle')
-        return DrawingCanvas
+        RecCanvas = my_canvas.get_draw_class('rectangle')
+        CompCanvas = my_canvas.get_draw_class('compass')
+        return RecCanvas, CompCanvas
 
     def start_scan(self):
         hdu = fits.PrimaryHDU()
@@ -106,12 +109,18 @@ class FitsViewer(QtGui.QMainWindow):
         filepath = self.processData(filepath)
         image = load_data(filepath, logger=self.logger)
         self.fitsimage.set_image(image)
-#        self.setWindowTitle(filepath)
+        # self.setWindowTitle(filepath)
         left, right, up, down = self.getROI()
-        self.box = self.dc(left, down, right, up, color='green')
-
+        self.box = self.recdc(left, down, right, up, color='green')
         self.fitsimage.get_canvas().add(self.box, redraw=True)
-        self.fitsimage.rotate(self.rotAngle())
+        width, height = image.get_size()
+        x, y = width / 2.0, height / 2.0
+        # radius we want the arms to be (approx 1/4 the largest dimension)
+        radius = float(max(width, height)) / 4.0
+        self.fitsimage.get_canvas().add(self.compdc(x, y, radius, color='skyblue',
+                                       fontsize=14))
+        self.bd._orient(self.fitsimage, righthand=False, msg=True)
+
 
     def open_file(self):
         res = QtGui.QFileDialog.getOpenFileName(self, "Open FITS file",
@@ -139,24 +148,24 @@ class FitsViewer(QtGui.QMainWindow):
 
         # TODO ADD WCS
         # Calculate WCS RA
-        # try:
-        #     # NOTE: image function operates on DATA space coords
-        #     image = viewer.get_image()
-        #     if image is None:
-        #         # No image loaded
-        #         return
-        #     ra_txt, dec_txt = image.pixtoradec(fits_x, fits_y,
-        #                                        format='str', coords='fits')
-        # except Exception as e:
-        #     self.logger.warning("Bad coordinate conversion: %s" % (
-        #         str(e)))
-        #     ra_txt = 'BAD WCS'
-        #     dec_txt = 'BAD WCS'
-        #
-        # text = "RA: %s  DEC: %s  X: %.2f  Y: %.2f  Value: %s" % (
-        #     ra_txt, dec_txt, fits_x, fits_y, value)
-        text = "X: %.2f  Y: %.2f  Value: %s" % (
-             fits_x, fits_y, value)
+        try:
+            # NOTE: image function operates on DATA space coords
+            image = viewer.get_image()
+            if image is None:
+                # No image loaded
+                return
+            ra_txt, dec_txt = image.pixtoradec(fits_x, fits_y,
+                                               format='str', coords='fits')
+        except Exception as e:
+            self.logger.warning("Bad coordinate conversion: %s" % (
+                str(e)))
+            ra_txt = 'BAD WCS'
+            dec_txt = 'BAD WCS'
+
+        text = "RA: %s  DEC: %s  X: %.2f  Y: %.2f  Value: %s" % (
+            ra_txt, dec_txt, fits_x, fits_y, value)
+        # text = "X: %.2f  Y: %.2f  Value: %s" % (
+        #      fits_x, fits_y, value)
         self.readout.setText(text)
 
     def quit(self, *args):
@@ -176,17 +185,11 @@ class FitsViewer(QtGui.QMainWindow):
     #TODO:
     #add osiris FOV
 
-
-    def rotAngle(self):
-        cur = self.curAngle.read()
-        final = 179.5 - float(cur)#TODO figure out if this angle is right
-        return final
-
     def getROI(self):
-        left = int(self.trickxpos.read())
-        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*5
-        up = int(self.trickypos.read())
-        down = int(self.trickypos.read()) + int(self.trickysize.read())*5
+        left = int(self.trickxpos.read()) - int(self.trickxsize.read())*7
+        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*7
+        up = int(self.trickypos.read()) - int(self.trickysize.read())*7
+        down = int(self.trickypos.read()) + int(self.trickysize.read())*7
         print("ROI box: %d %d %d %d" %(left, right, up, down))
         return left, right, up, down
 
@@ -272,27 +275,46 @@ class FitsViewer(QtGui.QMainWindow):
             time.sleep(wait_time)
 
     def processData(self, filename):
-        fitsData = fits.getdata(filename, ext=0)
-        header = fits.getheader(filename)
+        header, fitsData = self.addWcs(filename)
         mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
         maskedData = np.multiply(fitsData, mask)
         background = np.median(maskedData)
         return self.writeFits(header, maskedData - background)
 
+    def addWcs(self, filen):
+        w = wcs.WCS(naxis=2)
+        fitsData = fits.getdata(filen, ext=0)
+        header = fits.getheader(filen)
+        ht, wd = fitsData.shape[:2]
+        y = ht//2
+        x = wd//2
+        ra = float(header['RA'])
+        dec = float(header['DEC'])
+        rot = float(header['ROTPOSN'])
+        w.wcs.crpix = [y, x]
+        w.wcs.cdelt = np.array([-0.05, 0.05])
+        w.wcs.crota = np.array([0.05, rot])
+        w.wcs.crval = [ra, dec]
+        w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        pixcrd = np.array([[0, 0], [24, 38], [45, 98]], dtype=np.float64)
+        world = w.wcs_pix2world(pixcrd, 0)
+        # Convert the same coordinates back to pixel coordinates.
+        pixcrd2 = w.wcs_world2pix(world, 0)
+        # These should be the same as the original pixel coordinates, modulo
+        # some floating-point error.
+        assert np.max(np.abs(pixcrd - pixcrd2)) < 1e-6
+        # Now, write out the WCS object as a FITS header
+        header = w.to_header()
+        return header, fitsData
+
     def writeFits(self, headerinfo, image_data):
-        hdu = fits.PrimaryHDU()
-        hdu.data = image_data
-        hdu.header = headerinfo
+        hdu = fits.PrimaryHDU(header=headerinfo, data=image_data)
         filename = 'procImage.fits'
         try:
-            hdul = fits.HDUList([hdu])
-            hdul.writeto(filename)
-            hdul.close()
+            hdu.writeto(filename)
         except OSError:
             os.remove(filename)
-            hdul = fits.HDUList([hdu])
-            hdul.writeto(filename)
-            hdul.close()
+            hdu.writeto(filename)
         return filename
 
 def main():
@@ -306,7 +328,7 @@ def main():
     logger = log.get_logger("example1", log_stderr=True, level=40)
 
     w = FitsViewer(logger)
-    w.resize(700, 800)
+    w.resize(800, 900)
     w.show()
     app.setActiveWindow(w)
     w.raise_()

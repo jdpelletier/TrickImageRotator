@@ -53,6 +53,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.logger = logger
 
         self.cachedFiles = None
+        self.scanning = False
         #KTL stuff
         #Cache KTL keywords
         self.trickxpos = ktl.cache('ao', 'TRKRO1XP')
@@ -91,8 +92,22 @@ class FitsViewer(QtGui.QMainWindow):
         hbox.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
 
         self.readout = QtGui.QLabel("")
-        wstartscan = QtGui.QPushButton("Start Scan")
-        wstartscan.clicked.connect(self.start_scan)
+
+        hbox.addStretch(1)
+        hbox.addWidget(self.readout, stretch = 0)
+
+        hw = QtGui.QWidget()
+        hw.setLayout(hbox)
+        vbox.addWidget(hw, stretch=0)
+
+        hbox2 = QtGui.QHBoxLayout()
+        hbox2.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
+        self.wstartscan = QtGui.QPushButton("Start Scan")
+        self.wstartscan.clicked.connect(self.start_scan)
+        self.wstartscan.setEnabled(True)
+        self.wstopscan = QtGui.QPushButton("Stop Scan")
+        self.wstopscan.clicked.connect(self.stop_scan)
+        self.wstopscan.setEnabled(False)
         self.wcut = QtGui.QComboBox()
         for name in fi.get_autocut_methods():
             self.wcut.addItem(name)
@@ -103,13 +118,13 @@ class FitsViewer(QtGui.QMainWindow):
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
-        hbox.addStretch(1)
-        for w in (self.readout, wstartscan, self.wcut, wopen, wquit):
-            hbox.addWidget(w, stretch=0)
+        hbox2.addStretch(1)
+        for w in (self.wstartscan, self.wstopscan, self.wcut, wopen, wquit):
+            hbox2.addWidget(w, stretch=0)
 
-        hw = QtGui.QWidget()
-        hw.setLayout(hbox)
-        vbox.addWidget(hw, stretch=0)
+        hw2 = QtGui.QWidget()
+        hw2.setLayout(hbox2)
+        vbox.addWidget(hw2, stretch=0)
 
         vw = QtGui.QWidget()
         self.setCentralWidget(vw)
@@ -125,6 +140,9 @@ class FitsViewer(QtGui.QMainWindow):
         return RecCanvas, CompCanvas
 
     def start_scan(self):
+        self.wstartscan.setEnabled(False)
+        self.wstopscan.setEnabled(True)
+        self.scanning = True
         hdu = fits.PrimaryHDU()
         try:
             hdu.writeto('procImage.fits')
@@ -136,6 +154,12 @@ class FitsViewer(QtGui.QMainWindow):
         scanner = Scanner(self.scan)
         scanner.signals.load.connect(self.load_file)
         self.threadpool.start(scanner)
+
+    def stop_scan(self):
+        self.wstartscan.setEnabled(True)
+        self.wstopscan.setEnabled(False)
+        self.scanning = False
+        print('Scanning stopped.')
 
     def load_file(self, filepath):
         filepath = self.processData(filepath)
@@ -210,9 +234,9 @@ class FitsViewer(QtGui.QMainWindow):
     ##Start of image find and processing code
 
     def scan(self, file_callback):
-        while self.threadpool:
+        while self.scanning:
             hasNewFiles, files, self.cachedFiles = self.updateFileCache(self.cachedFiles)
-            if hasNewFiles:
+            if hasNewFiles and (files[0].endswith('.fits') or files[0].endswith('.fits.gz')):
                 print("New Image Detected!")
                 filen = files[0]
                 self.waitForFileToBeUnlocked(filen, 1)
@@ -345,7 +369,7 @@ def main():
     logger = log.get_logger("example1", log_stderr=True, level=40)
 
     w = FitsViewer(logger)
-    w.resize(800, 900)
+    w.resize(600, 700)
     w.show()
     app.setActiveWindow(w)
     w.raise_()

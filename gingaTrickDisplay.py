@@ -112,6 +112,10 @@ class FitsViewer(QtGui.QMainWindow):
         for name in fi.get_autocut_methods():
             self.wcut.addItem(name)
         self.wcut.currentIndexChanged.connect(self.cut_change)
+        self.wcolor = QtGui.QComboBox()
+        for name in fi.get_color_algorithms():
+            self.wcolor.addItem(name)
+        self.wcolor.currentIndexChanged.connect(self.color_change)
         wopen = QtGui.QPushButton("Open File")
         wopen.clicked.connect(self.open_file)
         wquit = QtGui.QPushButton("Quit")
@@ -119,7 +123,7 @@ class FitsViewer(QtGui.QMainWindow):
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
         hbox2.addStretch(1)
-        for w in (self.wstartscan, self.wstopscan, self.wcut, wopen, wquit):
+        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, wquit):
             hbox2.addWidget(w, stretch=0)
 
         hw2 = QtGui.QWidget()
@@ -191,6 +195,9 @@ class FitsViewer(QtGui.QMainWindow):
     def cut_change(self):
         self.fitsimage.set_autocut_params(self.wcut.currentText())
 
+    def color_change(self):
+        self.fitsimage.set_color_algorithm(self.wcolor.currentText())
+
     def motion_cb(self, viewer, button, data_x, data_y):
 
         # Get the value under the data coordinates
@@ -236,7 +243,7 @@ class FitsViewer(QtGui.QMainWindow):
     def scan(self, file_callback):
         while self.scanning:
             hasNewFiles, files, self.cachedFiles = self.updateFileCache(self.cachedFiles)
-            if hasNewFiles and (files[0].endswith('.fits') or files[0].endswith('.fits.gz')):
+            if hasNewFiles and ('.fits' in files[0] or '.fits.gz' in files[0]):
                 print("New Image Detected!")
                 filen = files[0]
                 self.waitForFileToBeUnlocked(filen, 1)

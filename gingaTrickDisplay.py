@@ -17,8 +17,34 @@ from ginga.qtw.QtHelp import QtGui, QtCore
 from ginga.qtw.ImageViewQt import CanvasView, ScrolledView
 from ginga.util.loader import load_data
 
-
 import ktl
+
+class ScannerSignals(QtCore.QObject):
+    load = QtCore.Signal(object)
+
+class Scanner(QtCore.QRunnable):
+    '''
+    Scanner thread
+    '''
+    def __init__(self, fn, *args, **kwargs):
+        super(Scanner, self).__init__()
+
+        # Store constructor arguments (re-used for processing)
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = ScannerSignals()
+        self.kwargs['file_callback'] = self.signals.load
+
+        # Add the callback to our kwargs
+    @QtCore.Slot()
+    def run(self):
+        '''
+        Initialise the runner function with passed args, kwargs.
+        '''
+
+        self.fn(*self.args, **self.kwargs)
+
 
 class FitsViewer(QtGui.QMainWindow):
 
@@ -34,6 +60,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.trickxsize = ktl.cache('ao', 'TRKRO1XS')
         self.trickysize = ktl.cache('ao', 'TRKRO1YS')
 
+        self.threadpool = QtCore.QThreadPool()
 
         # create the ginga viewer and configure it
         fi = CanvasView(self.logger, render='widget')
@@ -63,16 +90,21 @@ class FitsViewer(QtGui.QMainWindow):
         hbox = QtGui.QHBoxLayout()
         hbox.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
 
-        self.readout = QtGui.QLabel("test")
+        self.readout = QtGui.QLabel("")
         wstartscan = QtGui.QPushButton("Start Scan")
         wstartscan.clicked.connect(self.start_scan)
+        self.wcut = QtGui.QComboBox()
+        for name in fi.get_autocut_methods():
+            self.wcut.addItem(name)
+        self.wcut.currentIndexChanged.connect(self.cut_change)
         wopen = QtGui.QPushButton("Open File")
         wopen.clicked.connect(self.open_file)
         wquit = QtGui.QPushButton("Quit")
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
+        fi.add_callback('cursor-down', self.btndown)
         hbox.addStretch(1)
-        for w in (self.readout, wstartscan, wopen, wquit):
+        for w in (self.readout, wstartscan, self.wcut, wopen, wquit):
             hbox.addWidget(w, stretch=0)
 
         hw = QtGui.QWidget()
@@ -100,10 +132,10 @@ class FitsViewer(QtGui.QMainWindow):
             os.remove('procImage.fits')
             hdu.writeto('procImage.fits')
         self.cachedFiles = self.walkDirectory()
-        self.thread = None
-        self.runThread = True
         print("scan started...")
-        self.scan(1, self.cachedFiles)
+        scanner = Scanner(self.scan)
+        scanner.signals.load.connect(self.load_file)
+        self.threadpool.start(scanner)
 
     def load_file(self, filepath):
         filepath = self.processData(filepath)
@@ -114,13 +146,12 @@ class FitsViewer(QtGui.QMainWindow):
         self.box = self.recdc(left, down, right, up, color='green')
         self.fitsimage.get_canvas().add(self.box, redraw=True)
         width, height = image.get_size()
-        x, y = width / 2.0, height / 2.0
-        # radius we want the arms to be (approx 1/4 the largest dimension)
-        radius = float(max(width, height)) / 4.0
-        self.fitsimage.get_canvas().add(self.compdc(x, y, radius, color='skyblue',
-                                       fontsize=14))
+        data_x, data_y = width / 2.0, height / 2.0
+        # x, y = self.fitsimage.get_canvas_xy(data_x, data_y)
+        radius = float(max(width, height)) / 10
+        self.fitsimage.get_canvas().add(self.compdc(data_x, data_y, radius, color='skyblue',
+                                       fontsize=8))
         self.bd._orient(self.fitsimage, righthand=False, msg=True)
-
 
     def open_file(self):
         res = QtGui.QFileDialog.getOpenFileName(self, "Open FITS file",
@@ -132,6 +163,9 @@ class FitsViewer(QtGui.QMainWindow):
             fileName = str(res)
         if len(fileName) != 0:
             self.load_file(fileName)
+
+    def cut_change(self):
+        self.fitsimage.set_autocut_params(self.wcut.currentText())
 
     def motion_cb(self, viewer, button, data_x, data_y):
 
@@ -146,7 +180,6 @@ class FitsViewer(QtGui.QMainWindow):
 
         fits_x, fits_y = data_x, data_y
 
-        # TODO ADD WCS
         # Calculate WCS RA
         try:
             # NOTE: image function operates on DATA space coords
@@ -164,68 +197,37 @@ class FitsViewer(QtGui.QMainWindow):
 
         text = "RA: %s  DEC: %s  X: %.2f  Y: %.2f  Value: %s" % (
             ra_txt, dec_txt, fits_x, fits_y, value)
-        # text = "X: %.2f  Y: %.2f  Value: %s" % (
-        #      fits_x, fits_y, value)
         self.readout.setText(text)
+
+    def btndown(self, canvas, event, data_x, data_y):
+        self.fitsimage.set_pan(data_x, data_y)
 
     def quit(self, *args):
         self.logger.info("Attempting to shut down the application...")
-        self.runThread = False
-        try:
-            self.thread.join()
-        except AttributeError:
-            print("Scanning never started")
+        self.threadpool = False
         self.deleteLater()
 
     ##Start of image find and processing code
 
-
-
-
-    #TODO:
-    #add osiris FOV
-
-    def getROI(self):
-        left = int(self.trickxpos.read()) - int(self.trickxsize.read())*7
-        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*7
-        up = int(self.trickypos.read()) - int(self.trickysize.read())*7
-        down = int(self.trickypos.read()) + int(self.trickysize.read())*7
-        print("ROI box: %d %d %d %d" %(left, right, up, down))
-        return left, right, up, down
-
-    def nightpath(self):
-        # nightly = Path('/net/k1aoserver/k1aodata/nightly')
-        # date = datetime.datetime.utcnow()
-        # year, month, day = str(date.strftime("%y")), str(date.strftime("%m")), str(date.strftime("%d"))
-        # nightly = nightly / year / month / day / 'Trick'
-        return '.'
+    def scan(self, file_callback):
+        while self.threadpool:
+            hasNewFiles, files, self.cachedFiles = self.updateFileCache(self.cachedFiles)
+            if hasNewFiles:
+                print("New Image Detected!")
+                filen = files[0]
+                self.waitForFileToBeUnlocked(filen, 1)
+                file_callback.emit(filen)
+            time.sleep(1)
 
     def walkDirectory(self):
         directory = self.nightpath()
         return [abspath(join(directory, f)) for f in listdir(directory) if isfile(join(directory, f))]
-
 
     def updateFileCache(self, cachedFiles):
         updatedFileList = self.walkDirectory()
         filtered = [i for i in updatedFileList if not i in cachedFiles]
         cachedFiles = updatedFileList
         return len(filtered) > 0, filtered, cachedFiles
-
-
-    def scan(self, timeout, cachedFiles):
-        def __target():
-            while self.runThread:
-                hasNewFiles, files, self.cachedFiles = self.updateFileCache(self.cachedFiles)
-                if hasNewFiles:
-                    print("New Image Detected!")
-                    filen = files[0]
-                    self.waitForFileToBeUnlocked(filen, 1)
-                    self.load_file(filen)
-                time.sleep(timeout)
-        self.thread = threading.Thread(target=__target)
-        self.thread.daemon = True
-        self.thread.start()
-        return cachedFiles
 
     def fileIsCurrentlyLocked(self, filepath):
         locked = None
@@ -274,6 +276,21 @@ class FitsViewer(QtGui.QMainWindow):
             print("%s is currently in use. Waiting %s seconds." % (filename, wait_time))
             time.sleep(wait_time)
 
+    def getROI(self):
+        left = int(self.trickxpos.read()) - int(self.trickxsize.read())*5
+        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*5
+        up = int(self.trickypos.read()) - int(self.trickysize.read())*5
+        down = int(self.trickypos.read()) + int(self.trickysize.read())*5
+        print("ROI box: %d %d %d %d" %(left, right, up, down))
+        return left, right, up, down
+
+    def nightpath(self):
+        # nightly = Path('/net/k1aoserver/k1aodata/nightly')
+        # date = datetime.datetime.utcnow()
+        # year, month, day = str(date.strftime("%y")), str(date.strftime("%m")), str(date.strftime("%d"))
+        # nightly = nightly / year / month / day / 'Trick'
+        return '.'
+
     def processData(self, filename):
         header, fitsData = self.addWcs(filename)
         mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
@@ -293,7 +310,7 @@ class FitsViewer(QtGui.QMainWindow):
         rot = float(header['ROTPOSN'])
         w.wcs.crpix = [y, x]
         w.wcs.cdelt = np.array([-0.05, 0.05])
-        w.wcs.crota = np.array([0.05, rot])
+        w.wcs.crota = np.array([0.05, rot+45])
         w.wcs.crval = [ra, dec]
         w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
         pixcrd = np.array([[0, 0], [24, 38], [45, 98]], dtype=np.float64)

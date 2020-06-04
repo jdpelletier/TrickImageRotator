@@ -8,3 +8,4 @@ t200424_000036.fits.gz
 *.gz
 gingaKTL.py
 addWCS.py
+qtthreadtest.py

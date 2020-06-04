@@ -33,4 +33,4 @@ image is found, the data is pulled and processed, then displayed with ds9_80.
   - ds9 rotates the image, so pixel information is not retained
 
 ## Future additions
--Boxes showing where OSIMG and OSPEC are looking
+- Boxes showing where OSIMG and OSPEC are looking

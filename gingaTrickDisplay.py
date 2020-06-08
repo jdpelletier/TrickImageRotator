@@ -183,7 +183,7 @@ class FitsViewer(QtGui.QMainWindow):
 
     def open_file(self):
         res = QtGui.QFileDialog.getOpenFileName(self, "Open FITS file",
-                                                ".")
+                                                str(self.nightpath()))
         print(res)
         if isinstance(res, tuple):
             fileName = res[0]
@@ -316,11 +316,11 @@ class FitsViewer(QtGui.QMainWindow):
         return left, right, up, down
 
     def nightpath(self):
-        # nightly = Path('/net/k1aoserver/k1aodata/nightly')
-        # date = datetime.datetime.utcnow()
-        # year, month, day = str(date.strftime("%y")), str(date.strftime("%m")), str(date.strftime("%d"))
-        # nightly = nightly / year / month / day / 'Trick'
-        return '.'
+        nightly = Path('/net/k1aoserver/k1aodata/nightly')
+        date = datetime.datetime.utcnow()
+        year, month, day = str(date.strftime("%y")), str(date.strftime("%m")), str(date.strftime("%d"))
+        nightly = nightly / year / month / day / 'Trick'
+        return nightly
 
     def processData(self, filename):
         header, fitsData = self.addWcs(filename)

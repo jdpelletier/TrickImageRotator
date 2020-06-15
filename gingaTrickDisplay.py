@@ -308,10 +308,10 @@ class FitsViewer(QtGui.QMainWindow):
             time.sleep(wait_time)
 
     def getROI(self):
-        left = int(self.trickxpos.read()) - int(self.trickxsize.read())*5
-        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*5
-        up = int(self.trickypos.read()) - int(self.trickysize.read())*5
-        down = int(self.trickypos.read()) + int(self.trickysize.read())*5
+        left = int(self.trickxpos.read()) - int(self.trickxsize.read())*3
+        right = int(self.trickxpos.read()) + int(self.trickxsize.read())*3
+        up = int(self.trickypos.read()) - int(self.trickysize.read())*3
+        down = int(self.trickypos.read()) + int(self.trickysize.read())*3
         print("ROI box: %d %d %d %d" %(left, right, up, down))
         return left, right, up, down
 
@@ -341,7 +341,7 @@ class FitsViewer(QtGui.QMainWindow):
         rot = float(header['ROTPOSN'])
         w.wcs.crpix = [y, x]
         w.wcs.cdelt = np.array([-0.05, 0.05])
-        w.wcs.crota = np.array([0.05, rot+45])
+        w.wcs.crota = np.array([0.05, rot-90.0])
         w.wcs.crval = [ra, dec]
         w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
         pixcrd = np.array([[0, 0], [24, 38], [45, 98]], dtype=np.float64)

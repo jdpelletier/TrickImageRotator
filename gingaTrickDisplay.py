@@ -176,7 +176,7 @@ class FitsViewer(QtGui.QMainWindow):
         width, height = image.get_size()
         data_x, data_y = width / 2.0, height / 2.0
         # x, y = self.fitsimage.get_canvas_xy(data_x, data_y)
-        radius = float(max(width, height)) / 10
+        radius = float(max(width, height)) / 20
         self.fitsimage.get_canvas().add(self.compdc(data_x, data_y, radius, color='skyblue',
                                        fontsize=8))
         self.bd._orient(self.fitsimage, righthand=False, msg=True)
@@ -341,7 +341,7 @@ class FitsViewer(QtGui.QMainWindow):
         rot = float(header['ROTPOSN'])
         w.wcs.crpix = [y, x]
         w.wcs.cdelt = np.array([-0.05, 0.05])
-        w.wcs.crota = np.array([0.05, rot-90.0])
+        w.wcs.crota = np.array([0.05, rot])
         w.wcs.crval = [ra, dec]
         w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
         pixcrd = np.array([[0, 0], [24, 38], [45, 98]], dtype=np.float64)

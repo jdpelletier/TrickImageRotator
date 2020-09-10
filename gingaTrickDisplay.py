@@ -134,6 +134,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.setCentralWidget(vw)
         vw.setLayout(vbox)
         self.recdc, self.compdc = self.add_canvas()
+        self.boxtag = "roi-box"
 
 
     def add_canvas(self, tag=None):
@@ -171,8 +172,14 @@ class FitsViewer(QtGui.QMainWindow):
         self.fitsimage.set_image(image)
         # self.setWindowTitle(filepath)
         left, right, up, down = self.getROI()
-        self.box = self.recdc(left, down, right, up, color='green')
-        self.fitsimage.get_canvas().add(self.box, redraw=True)
+        try:
+            self.fitsimage.get_canvas().get_object_by_tag(self.boxtag)
+            self.fitsimage.get_canvas().delete_object_by_tag(self.boxtag)
+            self.box = self.recdc(left, down, right, up, color='green')
+            self.fitsimage.get_canvas().add(self.box, tag=self.boxtag, redraw=True)
+        except KeyError:
+            self.box = self.recdc(left, down, right, up, color='green')
+            self.fitsimage.get_canvas().add(self.box, tag=self.boxtag, redraw=True)
         width, height = image.get_size()
         data_x, data_y = width / 2.0, height / 2.0
         # x, y = self.fitsimage.get_canvas_xy(data_x, data_y)

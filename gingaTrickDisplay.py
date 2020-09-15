@@ -330,10 +330,13 @@ class FitsViewer(QtGui.QMainWindow):
         return nightly
 
     def processData(self, filename):
-        header, fitsData = self.addWcs(filename)
+        header, fitsData, filter = self.addWcs(filename)
         mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
         maskedData = np.multiply(fitsData, mask)
-        background = np.median(maskedData)
+        if filter == 'H':
+            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/H_sky.fits')
+        else:
+            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/ks_sky.fits')
         return self.writeFits(header, maskedData - background)
 
     def addWcs(self, filen):
@@ -346,6 +349,7 @@ class FitsViewer(QtGui.QMainWindow):
         ra = float(header['RA'])
         dec = float(header['DEC'])
         rot = float(header['ROTPOSN'])
+        filter = header['TRFWNAME']
         w.wcs.crpix = [y, x]
         w.wcs.cdelt = np.array([-0.05, 0.05])
         w.wcs.crota = np.array([0.05, rot])
@@ -360,7 +364,7 @@ class FitsViewer(QtGui.QMainWindow):
         assert np.max(np.abs(pixcrd - pixcrd2)) < 1e-6
         # Now, write out the WCS object as a FITS header
         header = w.to_header()
-        return header, fitsData
+        return header, fitsData, filter
 
     def writeFits(self, headerinfo, image_data):
         hdu = fits.PrimaryHDU(header=headerinfo, data=image_data)

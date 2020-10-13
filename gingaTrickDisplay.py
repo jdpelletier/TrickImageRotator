@@ -9,12 +9,16 @@ import datetime
 import numpy as np
 from astropy.io import fits
 from astropy import wcs
+import astropy.units as u
+from astropy.stats import gaussian_sigma_to_fwhm
+from astropy.modeling import models, fitting
 import PIL.Image as PILimage
 
 from ginga import Bindings
 from ginga.misc import log
 from ginga.qtw.QtHelp import QtGui, QtCore
 from ginga.qtw.ImageViewQt import CanvasView, ScrolledView
+from ginga.util import iqcalc
 from ginga.util.loader import load_data
 
 import ktl
@@ -61,7 +65,11 @@ class FitsViewer(QtGui.QMainWindow):
         self.trickxsize = ktl.cache('ao', 'TRKRO1XS')
         self.trickysize = ktl.cache('ao', 'TRKRO1YS')
 
+        self.rawfile = ''
+
         self.threadpool = QtCore.QThreadPool()
+
+        self.iqcalc = iqcalc.IQCalc(self.logger)
 
         # create the ginga viewer and configure it
         fi = CanvasView(self.logger, render='widget')
@@ -96,6 +104,11 @@ class FitsViewer(QtGui.QMainWindow):
         hbox.addStretch(1)
         hbox.addWidget(self.readout, stretch = 0)
 
+        self.box_readout = QtGui.QLabel("")
+
+        hbox.addStretch(1)
+        hbox.addWidget(self.box_readout, stretch = 0)
+
         hw = QtGui.QWidget()
         hw.setLayout(hbox)
         vbox.addWidget(hw, stretch=0)
@@ -118,12 +131,14 @@ class FitsViewer(QtGui.QMainWindow):
         self.wcolor.currentIndexChanged.connect(self.color_change)
         wopen = QtGui.QPushButton("Open File")
         wopen.clicked.connect(self.open_file)
+        wsky = QtGui.QPushButton("Load Sky")
+        wsky.clicked.connect(self.load_sky)
         wquit = QtGui.QPushButton("Quit")
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
         hbox2.addStretch(1)
-        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, wquit):
+        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, wsky, wquit):
             hbox2.addWidget(w, stretch=0)
 
         hw2 = QtGui.QWidget()
@@ -135,6 +150,7 @@ class FitsViewer(QtGui.QMainWindow):
         vw.setLayout(vbox)
         self.recdc, self.compdc = self.add_canvas()
         self.boxtag = "roi-box"
+        self.picktag = "pick-box"
 
 
     def add_canvas(self, tag=None):
@@ -157,7 +173,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.cachedFiles = self.walkDirectory()
         print("scan started...")
         scanner = Scanner(self.scan)
-        scanner.signals.load.connect(self.load_file)
+        scanner.signals.load.connect(self.processData)
         self.threadpool.start(scanner)
 
     def stop_scan(self):
@@ -167,7 +183,6 @@ class FitsViewer(QtGui.QMainWindow):
         print('Scanning stopped.')
 
     def load_file(self, filepath):
-        filepath = self.processData(filepath)
         image = load_data(filepath, logger=self.logger)
         self.fitsimage.set_image(image)
         # self.setWindowTitle(filepath)
@@ -180,6 +195,11 @@ class FitsViewer(QtGui.QMainWindow):
         except KeyError:
             self.box = self.recdc(left, down, right, up, color='green')
             self.fitsimage.get_canvas().add(self.box, tag=self.boxtag, redraw=True)
+        try:
+            self.fitsimage.get_canvas().get_object_by_tag(self.picktag)
+            self.fitsimage.get_canvas().delete_object_by_tag(self.picktag)
+        except KeyError:
+            pass
         width, height = image.get_size()
         data_x, data_y = width / 2.0, height / 2.0
         # x, y = self.fitsimage.get_canvas_xy(data_x, data_y)
@@ -197,7 +217,25 @@ class FitsViewer(QtGui.QMainWindow):
         else:
             fileName = str(res)
         if len(fileName) != 0:
-            self.load_file(fileName)
+            self.processData(fileName)
+
+    def load_sky(self):
+        res = QtGui.QFileDialog.getOpenFileName(self, "Open Sky file",
+                                                str(self.nightpath()))
+        if isinstance(res, tuple):
+            fileName = res[0]
+        else:
+            fileName = str(res)
+        if len(fileName) != 0:
+            self.subtract_sky(fileName)
+
+    def subtract_sky(self, filename):
+        skyheader, skyfitsData, skyfilter = self.addWcs(filename)
+        header, fitsData, filter = self.addWcs(self.rawfile)
+        with_sky = fitsData - skyfitsData
+        mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
+        self.load_file(self.writeFits(header, np.multiply(with_sky, mask)))
+
 
     def cut_change(self):
         self.fitsimage.set_autocut_params(self.wcut.currentText())
@@ -233,12 +271,8 @@ class FitsViewer(QtGui.QMainWindow):
             ra_txt = 'BAD WCS'
             dec_txt = 'BAD WCS'
 
-        text = "RA: %s  DEC: %s  X: %.2f  Y: %.2f  Value: %s" % (
-            ra_txt, dec_txt, fits_x, fits_y, value)
+        text = "X: %.2f  Y: %.2f  Value: %s" % (fits_x, fits_y, value)
         self.readout.setText(text)
-
-    def btndown(self, canvas, event, data_x, data_y):
-        self.fitsimage.set_pan(data_x, data_y)
 
     def quit(self, *args):
         self.logger.info("Attempting to shut down the application...")
@@ -330,14 +364,15 @@ class FitsViewer(QtGui.QMainWindow):
         return nightly
 
     def processData(self, filename):
+        self.rawfile = filename
         header, fitsData, filter = self.addWcs(filename)
         mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
-        maskedData = np.multiply(fitsData, mask)
         if filter == 'H':
             background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/H_sky.fits')
         else:
             background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/ks_sky.fits')
-        return self.writeFits(header, maskedData - background)
+        subtracted_data = fitsData-background
+        self.load_file(self.writeFits(header, np.multiply(subtracted_data, mask)))
 
     def addWcs(self, filen):
         w = wcs.WCS(naxis=2)
@@ -375,6 +410,80 @@ class FitsViewer(QtGui.QMainWindow):
             os.remove(filename)
             hdu.writeto(filename)
         return filename
+
+    ##Find star stuff
+    def cutdetail(self, image, shape_obj):
+        view, mask = image.get_shape_view(shape_obj)
+
+        data = image._slice(view)
+
+        y1, y2 = view[0].start, view[0].stop
+        x1, x2 = view[1].start, view[1].stop
+
+        # mask non-containing members
+        mdata = np.ma.array(data, mask=np.logical_not(mask))
+
+        return x1, y1, x2, y2, mdata
+
+    def findstar(self):
+        image = self.fitsimage.get_image()
+        obj = self.pickbox
+        shape = obj
+        x1, y1, x2, y2, data = self.cutdetail(image, shape)
+        ht, wd = data.shape[:2]
+        xc, yc = wd // 2, ht // 2
+        radius = min(xc, yc)
+        peaks = [(xc, yc)]
+        peaks = self.iqcalc.find_bright_peaks(data,
+                                              threshold=None,
+                                              radius=radius)
+
+        xc, yc = peaks[0]
+        xc += 1
+        yc += 1
+        return int(xc), int(yc), data
+
+    def fitstars(self, y_line):
+        x = np.linspace(-30, 30, 60)
+        model_gauss = models.Gaussian1D()
+        fitter_gauss = fitting.LevMarLSQFitter()
+        # gx = fitter_gauss(model_gauss, x, x_line)
+        gy = fitter_gauss(model_gauss, x, y_line)
+        # amplitude = (gx.amplitude.value+gy.amplitude.value)/2
+        amplitude = gy.amplitude.value
+        # fwhm = ((gx.stddev.value+gy.stddev.value)/2)*0.118 #2.355*PixelScale
+        fwhm = (gy.stddev.value)*0.118 #2.355*PixelScale
+        return amplitude, fwhm
+
+    def pickstar(self, viewer):
+        try:
+            self.fitsimage.get_canvas().get_object_by_tag(self.picktag)
+            self.fitsimage.get_canvas().delete_object_by_tag(self.picktag)
+            self.pickbox = self.recdc(self.xclick-30, self.yclick-30, self.xclick+30, self.yclick+30, color='red')
+            self.fitsimage.get_canvas().add(self.pickbox, tag=self.picktag, redraw=True)
+        except KeyError:
+            self.pickbox = self.recdc(self.xclick-30, self.yclick-30, self.xclick+30, self.yclick+30, color='red')
+            self.fitsimage.get_canvas().add(self.pickbox, tag=self.picktag, redraw=True)
+        image = self.fitsimage.get_image()
+        try:
+            xc, yc, data = self.findstar()
+            # x_line = data[40-yc, 0:40] doesn't work well for some reason
+            y_line = data[0:60, xc]
+            # amplitude, fwhm = self.fitstars(x_line, y_line)
+            amplitude, fwhm = self.fitstars(y_line)
+            text = f"Amplitude: {amplitude:.2f} FWHM: {fwhm:.2f}"
+            self.box_readout.setText(text)
+        except IndexError:
+            text = "Amplitude: N/A FWHM: N/A"
+            self.box_readout.setText(text)
+
+
+    def btndown(self, canvas, event, data_x, data_y):
+        # self.fitsimage.set_pan(data_x, data_y)
+        self.xclick = data_x
+        self.yclick = data_y
+        self.pickstar(self.fitsimage)
+
 
 def main():
     ##Write dummy file so walkDirectory caches it in the beginning

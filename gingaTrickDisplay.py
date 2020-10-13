@@ -131,14 +131,15 @@ class FitsViewer(QtGui.QMainWindow):
         self.wcolor.currentIndexChanged.connect(self.color_change)
         wopen = QtGui.QPushButton("Open File")
         wopen.clicked.connect(self.open_file)
-        wsky = QtGui.QPushButton("Load Sky")
-        wsky.clicked.connect(self.load_sky)
+        self.wsky = QtGui.QPushButton("Load Sky")
+        self.wsky.clicked.connect(self.load_sky)
+        self.wsky.setEnabled(False)
         wquit = QtGui.QPushButton("Quit")
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
         hbox2.addStretch(1)
-        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, wsky, wquit):
+        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, self.wsky, wquit):
             hbox2.addWidget(w, stretch=0)
 
         hw2 = QtGui.QWidget()
@@ -373,6 +374,7 @@ class FitsViewer(QtGui.QMainWindow):
             background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/ks_sky.fits')
         subtracted_data = fitsData-background
         self.load_file(self.writeFits(header, np.multiply(subtracted_data, mask)))
+        self.wsky.setEnabled(True)
 
     def addWcs(self, filen):
         w = wcs.WCS(naxis=2)

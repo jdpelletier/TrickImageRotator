@@ -99,15 +99,29 @@ class FitsViewer(QtGui.QMainWindow):
         hbox = QtGui.QHBoxLayout()
         hbox.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
 
-        self.readout = QtGui.QLabel("")
+        self.image_info = QtGui.QLabel("")
 
         hbox.addStretch(1)
-        hbox.addWidget(self.readout, stretch = 0)
+        hbox.addWidget(self.image_info, stretch = 0)
 
-        self.box_readout = QtGui.QLabel("")
+        text = f"Image:"
+        self.image_info.setText(text)
+
+        self.sky_info = QtGui.QLabel("")
+
+        self.filt_info = QtGui.QLabel("")
 
         hbox.addStretch(1)
-        hbox.addWidget(self.box_readout, stretch = 0)
+        hbox.addWidget(self.filt_info, stretch = 0)
+
+        text = f"Filter:"
+        self.filt_info.setText(text)
+
+        hbox.addStretch(1)
+        hbox.addWidget(self.sky_info, stretch = 0)
+
+        text = f"Sky:"
+        self.sky_info.setText(text)
 
         hw = QtGui.QWidget()
         hw.setLayout(hbox)
@@ -115,20 +129,29 @@ class FitsViewer(QtGui.QMainWindow):
 
         hbox2 = QtGui.QHBoxLayout()
         hbox2.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
+
+        self.readout = QtGui.QLabel("")
+
+        hbox2.addStretch(1)
+        hbox2.addWidget(self.readout, stretch = 0)
+
+        self.box_readout = QtGui.QLabel("")
+
+        hbox2.addStretch(1)
+        hbox2.addWidget(self.box_readout, stretch = 0)
+
+        hw2 = QtGui.QWidget()
+        hw2.setLayout(hbox2)
+        vbox.addWidget(hw2, stretch=0)
+
+        hbox3 = QtGui.QHBoxLayout()
+        hbox3.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
         self.wstartscan = QtGui.QPushButton("Start Scan")
         self.wstartscan.clicked.connect(self.start_scan)
         self.wstartscan.setEnabled(True)
         self.wstopscan = QtGui.QPushButton("Stop Scan")
         self.wstopscan.clicked.connect(self.stop_scan)
         self.wstopscan.setEnabled(False)
-        self.wcut = QtGui.QComboBox()
-        for name in fi.get_autocut_methods():
-            self.wcut.addItem(name)
-        self.wcut.currentIndexChanged.connect(self.cut_change)
-        self.wcolor = QtGui.QComboBox()
-        for name in fi.get_color_algorithms():
-            self.wcolor.addItem(name)
-        self.wcolor.currentIndexChanged.connect(self.color_change)
         wopen = QtGui.QPushButton("Open File")
         wopen.clicked.connect(self.open_file)
         self.wsky = QtGui.QPushButton("Load Sky")
@@ -138,13 +161,31 @@ class FitsViewer(QtGui.QMainWindow):
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
-        hbox2.addStretch(1)
-        for w in (self.wstartscan, self.wstopscan, self.wcut, self.wcolor, wopen, self.wsky, wquit):
-            hbox2.addWidget(w, stretch=0)
+        hbox4.addStretch(1)
+        for w in (self.wstartscan, self.wstopscan, wopen, self.wsky, wquit):
+            hbox4.addWidget(w, stretch=0)
 
-        hw2 = QtGui.QWidget()
-        hw2.setLayout(hbox2)
-        vbox.addWidget(hw2, stretch=0)
+        hw3 = QtGui.QWidget()
+        hw3.setLayout(hbox3)
+        vbox.addWidget(hw3, stretch=0)
+
+        hbox4 = QtGui.QHBoxLayout()
+        hbox4.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
+        self.wcut = QtGui.QComboBox()
+        for name in fi.get_autocut_methods():
+            self.wcut.addItem(name)
+        self.wcut.currentIndexChanged.connect(self.cut_change)
+        self.wcolor = QtGui.QComboBox()
+        for name in fi.get_color_algorithms():
+            self.wcolor.addItem(name)
+        self.wcolor.currentIndexChanged.connect(self.color_change)
+        hbox4.addStretch(1)
+        for w in (self.wcut, self.wcolor):
+            hbox4.addWidget(w, stretch=0)
+
+        hw4 = QtGui.QWidget()
+        hw4.setLayout(hbox4)
+        vbox.addWidget(hw4, stretch=0)
 
         vw = QtGui.QWidget()
         self.setCentralWidget(vw)
@@ -231,10 +272,12 @@ class FitsViewer(QtGui.QMainWindow):
             self.subtract_sky(fileName)
 
     def subtract_sky(self, filename):
-        skyheader, skyfitsData, skyfilter = self.addWcs(filename)
-        header, fitsData, filter = self.addWcs(self.rawfile)
+        skyname, skyheader, skyfitsData, skyfilter = self.addWcs(filename)
+        name, header, fitsData, filter = self.addWcs(self.rawfile)
         with_sky = fitsData - skyfitsData
-        mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
+        mask = fits.getdata('/kroot/rel/ao/qfix/data/Trick/BadPix_1014Hz.fits', ext=0)
+        text = f"Sky: {skyname}"
+        self.sky_info.setText(text)
         self.load_file(self.writeFits(header, np.multiply(with_sky, mask)))
 
 
@@ -366,14 +409,20 @@ class FitsViewer(QtGui.QMainWindow):
 
     def processData(self, filename):
         self.rawfile = filename
-        header, fitsData, filter = self.addWcs(filename)
-        mask = fits.getdata('BadPix_1014Hz.fits', ext=0)
+        name, header, fitsData, filter = self.addWcs(filename)
+        mask = fits.getdata('/kroot/rel/ao/qfix/data/Trick/BadPix_1014Hz.fits', ext=0)
         if filter == 'H':
-            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/H_sky.fits')
+            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/sky_H.fits')
+            self.sky_info.setText('Sky: sky_H.fits')
         else:
-            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/ks_sky.fits')
+            background = fits.getdata('/kroot/rel/ao/qfix/data/Trick/sky_Ks.fits')
+            self.sky_info.setText('sky_Ks.fits')
         subtracted_data = fitsData-background
         self.load_file(self.writeFits(header, np.multiply(subtracted_data, mask)))
+        text = f"Image: {name}"
+        self.image_info.setText(text)
+        text = f"Filter: {filter}"
+        self.filt_info.setText(text)
         self.wsky.setEnabled(True)
 
     def addWcs(self, filen):
@@ -383,6 +432,7 @@ class FitsViewer(QtGui.QMainWindow):
         ht, wd = fitsData.shape[:2]
         y = ht//2
         x = wd//2
+        name = header['DATAFILE']
         ra = float(header['RA'])
         dec = float(header['DEC'])
         rot = float(header['ROTPOSN'])
@@ -401,7 +451,7 @@ class FitsViewer(QtGui.QMainWindow):
         assert np.max(np.abs(pixcrd - pixcrd2)) < 1e-6
         # Now, write out the WCS object as a FITS header
         header = w.to_header()
-        return header, fitsData, filter
+        return name, header, fitsData, filter
 
     def writeFits(self, headerinfo, image_data):
         hdu = fits.PrimaryHDU(header=headerinfo, data=image_data)
@@ -454,7 +504,8 @@ class FitsViewer(QtGui.QMainWindow):
         # amplitude = (gx.amplitude.value+gy.amplitude.value)/2
         amplitude = gy.amplitude.value
         # fwhm = ((gx.stddev.value+gy.stddev.value)/2)*0.118 #2.355*PixelScale
-        fwhm = (gy.stddev.value)*0.118 #2.355*PixelScale
+        # fwhm = (gy.stddev.value)*0.118 #2.355*PixelScale
+        fwhm = (gy.stddev.value)*2.355 #pixels instead of arcseconds
         return amplitude, fwhm
 
     def pickstar(self, viewer):

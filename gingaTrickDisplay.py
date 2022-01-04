@@ -171,7 +171,7 @@ class FitsViewer(QtGui.QMainWindow):
 
         hbox4 = QtGui.QHBoxLayout()
         hbox4.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
-        self.wsetrio = QtGui.QPushButton("Set ROI")
+        self.wsetroi = QtGui.QPushButton("Set ROI")
         self.wsetroi.clicked.connect(self.set_roi)
         self.wsetroi.setEnabled(False)
         self.wcut = QtGui.QComboBox()

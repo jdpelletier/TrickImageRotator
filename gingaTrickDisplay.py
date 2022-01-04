@@ -541,8 +541,8 @@ class FitsViewer(QtGui.QMainWindow):
         # self.fitsimage.set_pan(data_x, data_y)
         self.xclick = data_x
         self.yclick = data_y
-        self.pickstar(self.fitsimage)
         self.wsetroi.setEnabled(True)
+        self.pickstar(self.fitsimage)
 
 
 def main():

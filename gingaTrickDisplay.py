@@ -161,9 +161,9 @@ class FitsViewer(QtGui.QMainWindow):
         wquit.clicked.connect(self.quit)
         fi.set_callback('cursor-changed', self.motion_cb)
         fi.add_callback('cursor-down', self.btndown)
-        hbox4.addStretch(1)
+        hbox3.addStretch(1)
         for w in (self.wstartscan, self.wstopscan, wopen, self.wsky, wquit):
-            hbox4.addWidget(w, stretch=0)
+            hbox3.addWidget(w, stretch=0)
 
         hw3 = QtGui.QWidget()
         hw3.setLayout(hbox3)

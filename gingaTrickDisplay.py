@@ -327,7 +327,10 @@ class FitsViewer(QtGui.QMainWindow):
         self.deleteLater()
 
     def set_roi(self):
-        print("test")
+        self.trickxpos.write(self.xclick)
+        self.trickypos.write(self.yclick)
+        print("TRICK ROI set")
+        self.wsetroi.setEnabled(False)
 
     ##Start of image find and processing code
 

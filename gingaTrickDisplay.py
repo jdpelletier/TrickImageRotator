@@ -171,6 +171,9 @@ class FitsViewer(QtGui.QMainWindow):
 
         hbox4 = QtGui.QHBoxLayout()
         hbox4.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
+        self.wsetrio = QtGui.QPushButton("Set ROI")
+        self.wsetroi.clicked.connect(self.set_roi)
+        self.wsetroi.setEnabled(False)
         self.wcut = QtGui.QComboBox()
         for name in fi.get_autocut_methods():
             self.wcut.addItem(name)
@@ -322,6 +325,9 @@ class FitsViewer(QtGui.QMainWindow):
         self.logger.info("Attempting to shut down the application...")
         self.threadpool = False
         self.deleteLater()
+
+    def set_roi(self):
+        print("test")
 
     ##Start of image find and processing code
 
@@ -536,6 +542,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.xclick = data_x
         self.yclick = data_y
         self.pickstar(self.fitsimage)
+        self.wsetroi.setEnabled(True)
 
 
 def main():

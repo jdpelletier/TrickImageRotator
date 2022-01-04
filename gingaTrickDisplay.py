@@ -183,7 +183,7 @@ class FitsViewer(QtGui.QMainWindow):
             self.wcolor.addItem(name)
         self.wcolor.currentIndexChanged.connect(self.color_change)
         hbox4.addStretch(1)
-        for w in (self.setroi, self.wcut, self.wcolor):
+        for w in (self.wsetroi, self.wcut, self.wcolor):
             hbox4.addWidget(w, stretch=0)
 
         hw4 = QtGui.QWidget()

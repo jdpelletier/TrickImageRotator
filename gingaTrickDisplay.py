@@ -5,6 +5,7 @@ from pathlib import Path
 import math
 import subprocess
 import datetime
+import time
 
 import numpy as np
 from astropy.io import fits
@@ -60,10 +61,22 @@ class FitsViewer(QtGui.QMainWindow):
         self.scanning = False
         #KTL stuff
         #Cache KTL keywords
-        self.trickxpos = ktl.cache('ao', 'TRKRO1XP')
-        self.trickypos = ktl.cache('ao', 'TRKRO1YP')
-        self.trickxsize = ktl.cache('ao', 'TRKRO1XS')
-        self.trickysize = ktl.cache('ao', 'TRKRO1YS')
+        self.trickxpos = ktl.cache('tds', 'TRKRO1X')
+        self.trickypos = ktl.cache('tds', 'TRKRO1Y')
+        self.trickxsize = ktl.cache('tds', 'TRKRO1SX')
+        self.trickysize = ktl.cache('tds', 'TRKRO1SY')
+        self.stopex = ktl.cache('tds', 'STOPEX')
+        self.timfile = ktl.cache('tds', 'TIMFILE')
+        self.init = ktl.cache('tds', 'INIT')
+        self.sampmode = ktl.cache('tds', 'SAMPMODE')
+        self.cdsmode = ktl.cache('tds', 'CDSMODE')
+        self.readmode = ktl.cache('tds', 'READMODE')
+        self.itime = ktl.cache('tds', 'ITIME')
+        self.getkw = ktl.cache('tds', 'GETKW')
+        self.getdcskw = ktl.cache('tds', 'GETDCSKW')
+        self.getaokw = ktl.cache('tds', 'GETAOKW')
+        self.go = ktl.cache('tds', 'GO')
+        self.progress = ktl.cache('tds', 'progress')
 
         self.rawfile = ''
 
@@ -171,6 +184,8 @@ class FitsViewer(QtGui.QMainWindow):
 
         hbox4 = QtGui.QHBoxLayout()
         hbox4.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
+        self.wtakeff = QtGui.QPushButton("Take Full Frame")
+        self.wtakeff.clicked.connect(self.take_ff)
         self.wsetroi = QtGui.QPushButton("Set ROI")
         self.wsetroi.clicked.connect(self.set_roi)
         self.wsetroi.setEnabled(False)
@@ -183,7 +198,7 @@ class FitsViewer(QtGui.QMainWindow):
             self.wcolor.addItem(name)
         self.wcolor.currentIndexChanged.connect(self.color_change)
         hbox4.addStretch(1)
-        for w in (self.wsetroi, self.wcut, self.wcolor):
+        for w in (self.wtakeff, self.wsetroi, self.wcut, self.wcolor):
             hbox4.addWidget(w, stretch=0)
 
         hw4 = QtGui.QWidget()
@@ -326,10 +341,30 @@ class FitsViewer(QtGui.QMainWindow):
         self.threadpool = False
         self.deleteLater()
 
+    def take_ff(self):
+        self.wtakeff.setEnabled(False)
+        self.stopex.write(1)
+        time.sleep(3)
+        self.timfile.write('/kroot/rel/default/data/nirtts_rel_v1.6.lod')
+        self.init.write(1)
+        self.sampmode.write(5)
+        self.cdsmode.write(1)
+        self.readmode.write(1)
+        self.itime.write(0)
+        self.getkw.write(1)
+        self.getdcskw.write(1)
+        self.getaokw.write(1)
+        self.go.write(1)
+
     def set_roi(self):
         self.trickxpos.write(self.xclick)
         self.trickypos.write(self.yclick)
         print("TRICK ROI set")
+        left, right, up, down = self.getROI()
+        self.fitsimage.get_canvas().get_object_by_tag(self.boxtag)
+        self.fitsimage.get_canvas().delete_object_by_tag(self.boxtag)
+        self.box = self.recdc(left, down, right, up, color='green')
+        self.fitsimage.get_canvas().add(self.box, tag=self.boxtag, redraw=True)
         self.wsetroi.setEnabled(False)
 
     ##Start of image find and processing code
@@ -398,7 +433,7 @@ class FitsViewer(QtGui.QMainWindow):
         # if the file exists but locked, wait wait_time seconds and check
         # again until it's no longer locked by another process
         while self.fileIsCurrentlyLocked(filename):
-            print("%s is currently in use. Waiting %s seconds." % (filename, wait_time))
+            print(self.progress.read())
             time.sleep(wait_time)
 
     def getROI(self):
@@ -433,6 +468,7 @@ class FitsViewer(QtGui.QMainWindow):
         text = f"Filter: {filter}"
         self.filt_info.setText(text)
         self.wsky.setEnabled(True)
+        self.wtakeff.setEnabled(True)
 
     def addWcs(self, filen):
         w = wcs.WCS(naxis=2)

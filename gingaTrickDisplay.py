@@ -78,6 +78,9 @@ class FitsViewer(QtGui.QMainWindow):
         self.go = ktl.cache('tds', 'GO')
         self.progress = ktl.cache('tds', 'progress')
         self.cyclespr = ktl.cache('tds', 'cyclespr')
+        self.trkfpspx = ktl.cache('ao', 'trkfpspx')
+        self.trkenapx = ktl.cache('ao', 'trkenapx')
+        self.trkstsx = ktl.cache('trick', 'trkstsx')
 
         self.rawfile = ''
 
@@ -369,6 +372,9 @@ class FitsViewer(QtGui.QMainWindow):
         self.cyclespr.write(50)
         self.readmode.write(3)
         self.go.write(1)
+        self.trkfpspx.write(1)
+        self.trkenapx.write(1)
+        self.trkstsx.write(1)
         self.wstartvideo.setEnabled(False)
 
     def set_roi(self):

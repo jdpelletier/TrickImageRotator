@@ -80,7 +80,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.cyclespr = ktl.cache('tds', 'cyclespr')
         self.trkfpspx = ktl.cache('ao', 'trkfpspx')
         self.trkenapx = ktl.cache('ao', 'trkenapx')
-        self.trkstop = ktl.cache('trick', 'trikstop')
+        self.trkstop = ktl.cache('trick', 'trkstop')
         self.trkstsx = ktl.cache('trick', 'trkstsx')
 
         self.rawfile = ''

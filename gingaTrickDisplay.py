@@ -189,6 +189,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.wtakeff.clicked.connect(self.take_ff)
         self.wstartvideo = QtGui.QPushButton("Start Video")
         self.wstartvideo.clicked.connect(self.start_video)
+        self.wstartvideo.setEnabled(False)
         self.wsetroi = QtGui.QPushButton("Set ROI")
         self.wsetroi.clicked.connect(self.set_roi)
         self.wsetroi.setEnabled(False)
@@ -358,6 +359,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.getdcskw.write(1)
         self.getaokw.write(1)
         self.go.write(1)
+        self.wstartvideo.setEnabled(True)
 
     def start_video(self):
         self.stopex.write(1)
@@ -367,6 +369,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.cyclespr.write(50)
         self.readmode.write(3)
         self.go.write(1)
+        self.wstartvideo.setEnabled(False)
 
     def set_roi(self):
         self.trickxpos.write(self.xclick)

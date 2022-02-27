@@ -372,6 +372,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.cyclespr.write(50)
         self.readmode.write(3)
         self.go.write(1)
+        time.sleep(3)
         self.trkfpspx.write(1)
         self.trkenapx.write(1)
         self.trkstsx.write(1)

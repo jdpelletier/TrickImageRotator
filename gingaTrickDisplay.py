@@ -385,8 +385,8 @@ class FitsViewer(QtGui.QMainWindow):
         # self.wstartvideo.setEnabled(False)
 
     def set_roi(self):
-        self.trickxpos.write(self.xclick-8)
-        self.trickypos.write(self.yclick-8)
+        self.trickxpos.write(self.xclick)
+        self.trickypos.write(self.yclick)
         print("TRICK ROI set")
         left, right, up, down = self.getROI()
         self.fitsimage.get_canvas().get_object_by_tag(self.boxtag)

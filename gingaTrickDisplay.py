@@ -77,6 +77,7 @@ class FitsViewer(QtGui.QMainWindow):
         self.getaokw = ktl.cache('tds', 'GETAOKW')
         self.go = ktl.cache('tds', 'GO')
         self.progress = ktl.cache('tds', 'progress')
+        self.cyclespr = ktl.cache('tds', 'cyclespr')
 
         self.rawfile = ''
 
@@ -186,6 +187,8 @@ class FitsViewer(QtGui.QMainWindow):
         hbox4.setContentsMargins(QtCore.QMargins(4, 2, 4, 2))
         self.wtakeff = QtGui.QPushButton("Take Full Frame")
         self.wtakeff.clicked.connect(self.take_ff)
+        self.wstartvideo = QtGui.QPushButton("Start Video")
+        self.wstartvideo.clicked.connect(self.start_video)
         self.wsetroi = QtGui.QPushButton("Set ROI")
         self.wsetroi.clicked.connect(self.set_roi)
         self.wsetroi.setEnabled(False)
@@ -198,7 +201,7 @@ class FitsViewer(QtGui.QMainWindow):
             self.wcolor.addItem(name)
         self.wcolor.currentIndexChanged.connect(self.color_change)
         hbox4.addStretch(1)
-        for w in (self.wtakeff, self.wsetroi, self.wcut, self.wcolor):
+        for w in (self.wstartvideo, self.wtakeff, self.wsetroi, self.wcut, self.wcolor):
             hbox4.addWidget(w, stretch=0)
 
         hw4 = QtGui.QWidget()
@@ -354,6 +357,15 @@ class FitsViewer(QtGui.QMainWindow):
         self.getkw.write(1)
         self.getdcskw.write(1)
         self.getaokw.write(1)
+        self.go.write(1)
+
+    def start_video(self):
+        self.stopex.write(1)
+        time.sleep(3)
+        self.init.write(1)
+        self.sampmode.write(5)
+        self.cyclespr.write(50)
+        self.readmode.write(3)
         self.go.write(1)
 
     def set_roi(self):
